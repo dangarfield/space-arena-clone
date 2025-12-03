@@ -1,0 +1,134 @@
+# Space Arena - Game Clone
+
+A browser-based clone of the mobile game Space Arena, built with SolidJS and Phaser 3.
+
+## Overview
+
+Space Arena is an automated space combat game where players design ships by placing modules on a grid, then watch them battle autonomously. Success depends on strategic ship design, module placement, and resource management.
+
+## Gameplay Mechanics
+
+### Game Flow
+1. **Main Menu** → Choose Career Mode or Quick Battle
+2. **Level Select** → Pick a campaign mission
+3. **Ship Select** → Choose your ship hull
+4. **Prepare Mode** → Design your ship with modules
+5. **Battle Mode** → Watch automated combat
+
+### Ship System
+
+**Ship Properties:**
+- **Class**: Corvette, Frigate, Cruiser, Battleship, Carrier
+- **Grid**: 2D array defining device cells ('D') and engine cells ('E')
+- **Total Cells**: Maximum module capacity
+- **Stats**: Speed, Turning, Unlock Level
+
+**Grid Cell Types:**
+- **'D' (Device)**: Can place weapons, defense, reactors, support modules
+- **'E' (Engine)**: Can only place engine/thruster modules
+- **' ' (Empty)**: Cannot place any modules
+
+### Module System
+
+**Module Categories:**
+
+1. **Weapons** (Red - 0xff4444)
+   - Ballistic: Chainguns, Railguns (affected by armor)
+   - Laser: Laser weapons (affected by reflect %)
+   - Missile: Missiles, Torpedoes (can be intercepted)
+   - Stats: Damage, Range, Fire Rate, Penetration, Power Use
+
+2. **Defense** (Blue - 0x4444ff)
+   - Armor: Steel, Reactive, Plasma, Solar
+   - Shield: Combat Shield, Battle Shield, War Shield
+   - Stats: Health, Armor rating, Reflect %, Power Use
+
+3. **Utility** (Yellow - 0xffaa00)
+   - Reactors: Generate power (Small, Medium, Large)
+   - Engines: Ion Drive, Warp Drive, Vectored Thruster (must be on 'E' cells)
+   - Support: Repair Bay, Point Defense
+   - Stats: Power Generation (reactors), Power Use (others)
+
+**Module Properties:**
+- **Size**: Grid dimensions (e.g., 1x1, 2x1, 2x7)
+- **Health**: Hit points before destruction
+- **Armor**: Damage reduction
+- **Mass**: Affects ship movement
+- **Power**: Generation (negative) or consumption (positive)
+
+### Fitting Rules
+
+**Level Requirements:**
+- Players have a level (currently unimplemented)
+- Can only fly ships where player level ≥ ship required level (rl)
+- A ship of level N can fit modules of up to level N+5
+
+**Ship Fitting Requirements:**
+- Must have sufficient power to power all modules
+- All ship cells must be filled (no empty cells)
+- Must have at least 1 reactor
+- Must have at least 1 engine
+
+**Click-to-Place System:**
+1. Click a module in the inventory to select it (highlighted blue)
+2. Hover over ship grid to see placement preview (green = valid, red = invalid)
+3. Click a grid cell to place the module
+4. Click placed modules to remove them
+5. Can place multiple instances of the same module
+
+**Placement Constraints:**
+- Must fit within grid boundaries
+- Cannot overlap with other modules
+- Engines only on 'E' cells, other modules only on 'D' cells
+- All cells in module footprint must be valid ship cells
+
+### Resource Management
+
+**Power Balance:**
+- Power Generation (from reactors) must be ≥ Power Consumption
+- Display shows: `Power: [Used] / [Generated]`
+- Red text indicates insufficient power
+
+**Cell Capacity:**
+- Total cells used cannot exceed ship capacity
+- Display shows: `Cells: [Used] / [Total]`
+- Red text indicates over capacity
+
+**Battle Requirements:**
+- Must have at least one weapon
+- Must have at least one reactor
+- Must have at least one engine
+- Power balance must be positive (generation ≥ consumption)
+- All ship cells must be filled
+
+### Combat System
+
+**Damage Types:**
+- **Ballistic**: Physical projectiles, reduced by armor
+- **Laser**: Energy beams, reduced by reflect %
+- **Missile**: Tracking projectiles, can be shot down
+
+**Module Destruction:**
+- Modules can be individually destroyed
+- Destroyed reactors explode, damaging nearby modules
+- Destroyed engines reduce ship speed
+- Ship defeated when all modules destroyed
+
+**AI Behavior:**
+- Ships move to optimal weapon range
+- Auto-fire weapons when in range
+- Prioritize high-value targets (reactors, weapons)
+- Use shields and abilities strategically
+
+## Development
+
+```bash
+pnpm install  # Setup
+pnpm dev      # Run dev server
+pnpm build    # Build for production
+```
+
+## Credits
+
+Based on the mobile game "Space Arena: Build & Fight" by HeroCraft Ltd.
+Data sourced from the Space Arena Wiki (https://spacearena.fandom.com).

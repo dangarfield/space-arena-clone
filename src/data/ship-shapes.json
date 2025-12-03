@@ -1,0 +1,51 @@
+{
+  "sparrow": {
+    "grid": { "width": 6, "height": 5 },
+    "shape": [
+      "  DD  ",
+      " DDDD ",
+      "DDDDDD",
+      " DDEE ",
+      "  EE  "
+    ]
+  },
+  "acolyte": {
+    "grid": { "width": 6, "height": 6 },
+    "shape": [
+      "  DD  ",
+      " DDDD ",
+      "DDDDDD",
+      "DDDDDD",
+      " DDEE ",
+      "  EE  "
+    ]
+  },
+  "hammerhead": {
+    "grid": { "width": 8, "height": 6 },
+    "shape": [
+      " DDDDDD ",
+      "DDDDDDDD",
+      "DDDDDDDD",
+      "DDDDDDDD",
+      " DDEEEE ",
+      "  EEEE  "
+    ]
+  },
+  "light_fighter": {
+    "grid": { "width": 5, "height": 3 },
+    "shape": [
+      " DDD ",
+      "DDDDD",
+      " DEE "
+    ]
+  },
+  "heavy_fighter": {
+    "grid": { "width": 6, "height": 4 },
+    "shape": [
+      " DDDD ",
+      "DDDDDD",
+      "DDDDDD",
+      " DEEE "
+    ]
+  }
+}

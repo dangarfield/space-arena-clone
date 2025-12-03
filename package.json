@@ -1,0 +1,27 @@
+{
+  "name": "space-arena-game",
+  "version": "1.0.0",
+  "description": "Space Arena game built with Phaser",
+  "main": "src/main.js",
+  "type": "module",
+  "scripts": {
+    "download": "node download-wiki-pages.js",
+    "parse": "node parse-wiki-html.js",
+    "convert": "node convert-to-json.js",
+    "validate-ships": "node validate-ships.js",
+    "build-data": "node scripts/build-data.cjs",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "jsdom": "^23.2.0",
+    "lil-gui": "^0.21.0",
+    "phaser": "^3.80.0",
+    "playwright": "^1.40.0",
+    "solid-js": "^1.9.10",
+    "vite-plugin-solid": "^2.11.10"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
