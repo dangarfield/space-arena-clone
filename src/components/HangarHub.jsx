@@ -224,7 +224,7 @@ export default function HangarHub(props) {
             {ship().name}
           </h2>
           <p style={{ 'font-size': '18px', color: '#aaa', 'margin': '0' }}>
-            {ship().class} - Level {ship().unlockLevel}
+            {ship().class} - Level {ship().unlockLevel || ship().lr || 1}
           </p>
           
           {/* Ship Grid Visualization */}

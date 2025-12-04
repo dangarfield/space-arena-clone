@@ -45,15 +45,34 @@ export default class WeaponModule extends BaseModule {
     // Create firing cone and range visualization
     this.rangeGraphics = this.scene.add.graphics();
     this.rangeGraphics.setDepth(-2);
+    
+    // Get visual config
+    const config = this.scene.visualConfig?.modules?.weapon_range || {
+      lineColor: 0xff4444,
+      lineAlpha: 0.3,
+      lineWidth: 0.1,
+      fillColor: 0xff4444,
+      fillAlpha: 0.1
+    };
+    this.visualConfig = config;
+    
     this.updateVisuals(x, y);
   }
   
   updateVisuals(x, y) {
     if (!this.rangeGraphics) return;
     
+    const config = this.visualConfig || {};
     this.rangeGraphics.clear();
-    this.rangeGraphics.lineStyle(0.1, 0xff4444, 0.3);
-    this.rangeGraphics.fillStyle(0xff4444, 0.1);
+    this.rangeGraphics.lineStyle(
+      config.lineWidth || 0.1,
+      parseInt(config.lineColor) || 0xff4444,
+      config.lineAlpha || 0.3
+    );
+    this.rangeGraphics.fillStyle(
+      parseInt(config.fillColor) || 0xff4444,
+      config.fillAlpha || 0.1
+    );
     
     // Draw firing cone pointing up (-90°) - container rotation handles direction
     const coneRad = this.fireCone * (Math.PI / 180);
@@ -99,7 +118,16 @@ export default class WeaponModule extends BaseModule {
     const spreadRad = this.shotSpread * (Math.PI / 180);
     const finalAngle = angle + (Math.random() - 0.5) * spreadRad;
     
-    const speed = this.scene.debugSettings?.ballisticSpeed || 40;
+    const speed = this.scene.debugSettings?.ballisticSpeed || 400;
+    
+    // Get ballistic visual config by module key, fallback to default
+    const moduleKey = this.config.module.key || 'default';
+    const ballisticConfigs = this.scene.visualConfig?.projectiles?.ballistic || {};
+    const ballisticConfig = ballisticConfigs[moduleKey] || ballisticConfigs.default || {
+      sprite: '/images/effects/ballistic-01.png',
+      scale: 0.015,
+      rotationOffset: 1.5708
+    };
     
     const projectile = {
       type: 'ballistic',
@@ -119,8 +147,15 @@ export default class WeaponModule extends BaseModule {
       travelDistance: 0,
       weapon: this,
       owner: this.ship,
-      sprite: this.scene.add.circle(this.worldPos.x, this.worldPos.y, 1, 0xffff00)
+      sprite: null
     };
+    
+    // Create sprite from config
+    const spriteKey = ballisticConfig.sprite.split('/').pop().replace('.png', '');
+    projectile.sprite = this.scene.add.image(this.worldPos.x, this.worldPos.y, spriteKey);
+    projectile.sprite.setRotation(finalAngle + ballisticConfig.rotationOffset);
+    projectile.sprite.setScale(ballisticConfig.scale);
+    projectile.sprite.setDepth(5);
     
     this.scene.projectiles.push(projectile);
     console.log('Fired ballistic!');
@@ -133,21 +168,87 @@ export default class WeaponModule extends BaseModule {
     const endY = this.worldPos.y + Math.sin(angle) * this.range;
     
     // Raycast to find hit (instant hit detection)
-    const hitModule = this.scene.raycastToModules(this.worldPos, { x: endX, y: endY }, targetShip);
+    let hitModule = this.scene.raycastToModules(this.worldPos, { x: endX, y: endY }, targetShip);
     
     if (hitModule) {
-      // Instant damage - no travel time, no dodging
-      hitModule.takeDamage(this.damage);
+      // Laser damage = DPS * Duration
+      // Apply damage in ticks (60fps)
+      const ticksPerSecond = 60;
+      const totalTicks = this.laserDuration * ticksPerSecond;
+      const totalDamage = this.damage * this.laserDuration;
+      const damagePerTick = totalDamage / totalTicks;
       
-      // Visual beam effect with duration
-      const beam = this.scene.add.line(0, 0, this.worldPos.x, this.worldPos.y, hitModule.worldPos.x, hitModule.worldPos.y, 0xff0000);
-      beam.setLineWidth(3);
+      // Apply damage over duration with armor/reflect per tick
+      let currentTick = 0;
+      const damageInterval = this.scene.time.addEvent({
+        delay: 1000 / ticksPerSecond,
+        repeat: totalTicks - 1,
+        callback: () => {
+          // Stop if source laser module is destroyed
+          if (!this.alive) {
+            damageInterval.remove();
+            return;
+          }
+          
+          if (hitModule && hitModule.alive) {
+            // Lasers ignore armor, only affected by reflect (wiki)
+            let tickDamage = damagePerTick * (1 - hitModule.reflect);
+            tickDamage = Math.max(1, tickDamage);
+            
+            hitModule.takeDamage(tickDamage);
+            
+            // If module destroyed, find next module in line
+            if (!hitModule.alive) {
+              hitModule = this.scene.raycastToModules(this.worldPos, { x: endX, y: endY }, targetShip);
+            }
+          }
+          
+          currentTick++;
+          if (currentTick >= totalTicks) {
+            this.scene.checkShipDestruction(targetShip);
+          }
+        }
+      });
+      
+      // Visual beam effect with duration - tracks moving ships
+      const moduleKey = this.config.module.key || 'default';
+      const laserConfigs = this.scene.visualConfig?.projectiles?.laser || {};
+      const laserConfig = laserConfigs[moduleKey] || laserConfigs.default || {
+        color: '0xff0000',
+        width: 0.1,
+        alpha: 0.8
+      };
+      console.log(`Laser config lookup: key="${moduleKey}", found=${!!laserConfigs[moduleKey]}, config:`, laserConfig);
+      const beamColor = parseInt(laserConfig.color);
+      const beamWidth = this.scene.debugSettings?.laserBeamWidth || laserConfig.width;
+      const beam = this.scene.add.line(0, 0, this.worldPos.x, this.worldPos.y, hitModule.worldPos.x, hitModule.worldPos.y, beamColor);
+      beam.setLineWidth(beamWidth);
+      beam.setAlpha(laserConfig.alpha);
       beam.setOrigin(0);
       beam.setDepth(10);
       
-      // Beam persists for laser duration
-      this.scene.time.delayedCall(this.laserDuration * 1000, () => beam.destroy());
-      console.log(`Fired laser! Duration: ${this.laserDuration}s`);
+      // Store beam data for tracking and retargeting
+      const beamData = {
+        beam: beam,
+        sourceModule: this,
+        targetModule: hitModule,
+        targetShip: targetShip,
+        damageInterval: damageInterval,
+        startTime: this.scene.time.now,
+        duration: this.laserDuration * 1000
+      };
+      
+      // Add to scene's active beams for update tracking
+      this.scene.activeBeams = this.scene.activeBeams || [];
+      this.scene.activeBeams.push(beamData);
+      
+      // Clean up after duration
+      this.scene.time.delayedCall(this.laserDuration * 1000, () => {
+        beam.destroy();
+        const index = this.scene.activeBeams.indexOf(beamData);
+        if (index > -1) this.scene.activeBeams.splice(index, 1);
+      });
+      console.log(`Fired laser! DPS: ${this.damage}, Duration: ${this.laserDuration}s, Total: ${totalDamage.toFixed(1)}`);
       return true;
     }
     
@@ -164,13 +265,20 @@ export default class WeaponModule extends BaseModule {
     for (let i = 0; i < this.missileCount; i++) {
       const target = aliveModules[Math.floor(Math.random() * aliveModules.length)];
       
+      // Launch at angle offset for arced trajectory
+      const angleOffset = (this.scene.debugSettings?.missileLaunchAngle || 30) * (Math.PI / 180);
+      const launchAngle = this.ship.rotation + angleOffset * (Math.random() > 0.5 ? 1 : -1);
+      
       const missile = {
         type: 'missile',
         x: this.worldPos.x,
         y: this.worldPos.y,
-        rotation: this.ship.rotation,
+        rotation: launchAngle,
         baseDamage: this.damage,
         speed: speed,
+        currentSpeed: speed * 0.3, // Start at 30% speed
+        maxSpeed: speed,
+        acceleration: speed * 2, // Accelerate to max in 0.5s
         accuracy: this.missileAccuracy,
         fuel: this.missileFuel,
         maxLifetime: this.missileLifetime,
@@ -181,11 +289,44 @@ export default class WeaponModule extends BaseModule {
         target: target,
         lifetime: 0,
         fuelRemaining: this.missileFuel,
-        sprite: this.scene.add.triangle(this.worldPos.x, this.worldPos.y, 0, -1, -0.7, 1, 0.7, 1, 0xff6600)
+        // Inherit ship velocity for momentum
+        inheritedVelocity: {
+          x: this.ship.velocity.x,
+          y: this.ship.velocity.y
+        },
+        sprite: null,
+        emitter: null
       };
       
-      missile.sprite.setRotation(this.ship.rotation);
+      // Get missile visual config by module key, fallback to default
+      const moduleKey = this.config.module.key || 'default';
+      const missileConfigs = this.scene.visualConfig?.projectiles?.missile || {};
+      const missileConfig = missileConfigs[moduleKey] || missileConfigs.default || {
+        sprite: '/images/effects/missile-01.png',
+        scale: 0.01,
+        rotationOffset: 1.5708
+      };
+      console.log(`Missile config lookup: key="${moduleKey}", found=${!!missileConfigs[moduleKey]}, config:`, missileConfig);
+      const spriteKey = missileConfig.sprite.split('/').pop().replace('.png', '');
+      missile.sprite = this.scene.add.image(this.worldPos.x, this.worldPos.y, spriteKey);
+      missile.sprite.setRotation(launchAngle + missileConfig.rotationOffset);
+      missile.sprite.setScale(missileConfig.scale);
       missile.sprite.setDepth(5);
+      
+      // Create smoke trail particle emitter (manual emission mode)
+      const trailConfig = this.scene.visualConfig?.effects?.missile_trail || {};
+      missile.emitter = this.scene.add.particles(0, 0, 'smoke', {
+        frame: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+        lifespan: trailConfig.lifespan || 800,
+        speed: trailConfig.speed || 2,
+        scale: { start: trailConfig.scaleStart || 0.003, end: trailConfig.scaleEnd || 0.008 },
+        alpha: { start: trailConfig.alphaStart || 0.6, end: trailConfig.alphaEnd || 0 },
+        frequency: -1,
+        blendMode: trailConfig.blendMode || 'ADD'
+      });
+      missile.emitter.setDepth(trailConfig.depth || 3);
+      missile.emitRate = trailConfig.emitRate || 1;
+      
       this.scene.projectiles.push(missile);
     }
     

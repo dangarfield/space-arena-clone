@@ -23,19 +23,33 @@ export default function GameWrapper(props) {
           const playerEngines = scene.playerShip.modules.filter(m => m.constructor.name === 'EngineModule' && m.alive);
           const enemyEngines = scene.enemyShip.modules.filter(m => m.constructor.name === 'EngineModule' && m.alive);
           
+          // Build module lists
+          const playerModuleList = scene.playerShip.modules.map((m, i) => {
+            const healthColor = m.health <= 0 ? '#666' : m.health / m.maxHealth > 0.5 ? '#0f0' : m.health / m.maxHealth > 0.25 ? '#fa0' : '#f00';
+            const shieldInfo = m.currentShield !== undefined ? ` [${Math.round(m.currentShield)}]` : '';
+            return `<div style="color: ${healthColor}; font-size: 11px;">${i}: ${m.name} ${Math.round(m.health)}/${m.maxHealth}${shieldInfo}</div>`;
+          }).join('');
+          
+          const enemyModuleList = scene.enemyShip.modules.map((m, i) => {
+            const healthColor = m.health <= 0 ? '#666' : m.health / m.maxHealth > 0.5 ? '#0f0' : m.health / m.maxHealth > 0.25 ? '#fa0' : '#f00';
+            const shieldInfo = m.currentShield !== undefined ? ` [${Math.round(m.currentShield)}]` : '';
+            return `<div style="color: ${healthColor}; font-size: 11px;">${i}: ${m.name} ${Math.round(m.health)}/${m.maxHealth}${shieldInfo}</div>`;
+          }).join('');
+          
           debugDiv.innerHTML = `
-            <div>Frame: ${scene.frameCount || 0}</div>
-            <div>Distance: ${Math.round(distance)}</div>
-            <div>Camera Zoom: ${scene.cameras.main.zoom.toFixed(2)}</div>
-            <div>Camera Pos: ${Math.round(scene.cameras.main.scrollX)}, ${Math.round(scene.cameras.main.scrollY)}</div>
-            <div>Player Pos: ${Math.round(scene.playerShip.pos.x)}, ${Math.round(scene.playerShip.pos.y)}</div>
-            <div>Player Rot: ${(scene.playerShip.rotation * 180 / Math.PI).toFixed(1)}°</div>
-            <div>Player Vel: ${scene.playerShip.velocity.x.toFixed(1)}, ${scene.playerShip.velocity.y.toFixed(1)}</div>
-            <div>Enemy Pos: ${Math.round(scene.enemyShip.pos.x)}, ${Math.round(scene.enemyShip.pos.y)}</div>
-            <div>Enemy Rot: ${(scene.enemyShip.rotation * 180 / Math.PI).toFixed(1)}°</div>
-            <div>Player: ${playerWeapons.length}W ${playerEngines.length}E</div>
-            <div>Enemy: ${enemyWeapons.length}W ${enemyEngines.length}E</div>
-            <div>Projectiles: ${scene.projectiles.length}</div>
+            <div style="margin-bottom: 10px;">
+              <div>Frame: ${scene.frameCount || 0}</div>
+              <div>Distance: ${Math.round(distance)}</div>
+              <div>Projectiles: ${scene.projectiles.length}</div>
+            </div>
+            <div style="margin-bottom: 10px; border-top: 1px solid #0f0; padding-top: 5px;">
+              <div style="color: #4af; font-weight: bold; margin-bottom: 3px;">PLAYER (${playerWeapons.length}W ${playerEngines.length}E)</div>
+              ${playerModuleList}
+            </div>
+            <div style="border-top: 1px solid #f00; padding-top: 5px;">
+              <div style="color: #f44; font-weight: bold; margin-bottom: 3px;">ENEMY (${enemyWeapons.length}W ${enemyEngines.length}E)</div>
+              ${enemyModuleList}
+            </div>
           `;
         }
       }

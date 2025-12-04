@@ -45,6 +45,7 @@ export async function hydrateShipConfig(minimalConfig) {
       type, color,
       module: {
         ...rawModule, // Include all raw module data FIRST
+        key: placement.moduleId, // Store module key for visual config lookup
         name: displayName, // Override with localized name
         category,
         image: `/images/modules/${imageName}.webp`,

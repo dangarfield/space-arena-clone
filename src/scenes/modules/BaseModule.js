@@ -24,6 +24,10 @@ export default class BaseModule {
     this.health = this.maxHealth;
     this.alive = true;
     
+    // Defense stats
+    this.armor = parseInt(this.data.stats?.Armor || this.data.a || 0);
+    this.reflect = parseFloat(this.data.stats?.Reflect || this.data.r || 0) / 100; // Convert to 0-1
+    
     // Visual
     this.sprite = null;
     this.worldPos = { x: 0, y: 0 };
@@ -136,7 +140,67 @@ export default class BaseModule {
       }
     }
     console.log(`Module destroyed: ${this.name}`);
+    
+    // Create explosion and smoke effect at module position
+    if (this.worldPos && this.scene.createExplosion) {
+      const moduleScale = this.scene.visualConfig?.explosions?.module?.scale || 0.3;
+      this.scene.createExplosion(this.worldPos.x, this.worldPos.y, moduleScale);
+    }
+    
+    // Check for reactor explosion
+    this.checkReactorExplosion();
   }
   
+  checkReactorExplosion() {
+    // Reactor explosion on destruction (category 128 = Reactor)
+    const explosionRadius = parseFloat(this.data.er || 0);
+    const explosionDamage = parseFloat(this.data.ed || 0);
+    
+    if (explosionRadius > 0 && explosionDamage > 0) {
+      console.log(`Reactor explosion! radius=${explosionRadius}, damage=${explosionDamage}`);
+      
+      // Visual explosion effect
+      const explosion = this.scene.add.circle(
+        this.worldPos.x,
+        this.worldPos.y,
+        0,
+        0xff4400,
+        0.6
+      );
+      explosion.setDepth(10);
+      
+      // Animate explosion
+      this.scene.tweens.add({
+        targets: explosion,
+        radius: explosionRadius,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => explosion.destroy()
+      });
+      
+      // Damage nearby modules on both ships
+      const allShips = [this.ship, this.ship.enemy].filter(s => s);
+      
+      allShips.forEach(ship => {
+        ship.modules.forEach(module => {
+          if (!module.alive || !module.worldPos) return;
+          
+          const dist = Phaser.Math.Distance.Between(
+            this.worldPos.x, this.worldPos.y,
+            module.worldPos.x, module.worldPos.y
+          );
+          
+          if (dist <= explosionRadius) {
+            // Damage falls off with distance
+            const damageFactor = 1 - (dist / explosionRadius);
+            const damage = explosionDamage * damageFactor;
+            
+            console.log(`  Explosion hit ${module.name} at ${dist.toFixed(1)} units: ${damage.toFixed(1)} damage`);
+            module.takeDamage(damage);
+          }
+        });
+      });
+    }
+  }
 
 }

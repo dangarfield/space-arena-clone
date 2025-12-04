@@ -1,0 +1,176 @@
+Hello All. I have worked a great deal on analyzing the quantifiable traits of each weapon in the game, most specifically DPS/Square (DPS/S). I am, however, only one person, and have limited time to compile and manipulate data. To this end I have some aspects of damage calculation which remain unknown to me, and I humbly request that those of you who are practiced and knowledgeable in any of the subject areas which I have unknowns outstanding offer your input and expertise (Top 100 I'm looking at you). Thank you in advance for your help. I will attempt to organize these questions as best as possible, but please bare with me as many questions overlap topics.
+
+Ballistics
+Reference Document: https://pastebin.com/sS5Fi56P
+
+Reference Thread: https://www.reddit.com/r/SpaceArena/comments/7xg1t4/data_discussion_and_hard_numbers/
+
+Equations
+Generalized Equations:
+
+Actual Projectile Damage Done (PDD) = Projectile Damage - Armor
+
+DPS = PDD * Projectile Count * Fire Rate * Hit Chance/Rate * Damage Drop Off Modifier
+
+DPS/Square (DPS/S) = DPS / (Module Block Count + Required Power Blocks) where Required Power Blocks = RoundUpInteger(Required Module Power / (Reactor Power Output / Reactor Block Count))
+
+Discussion
+First off, let's tackle the most obvious equation first - PDD. I work under the assumption that the damage delt to a module is equal to the projectile damage less the armor rating of the block. Ex. A Vulcan Turret Mk2 does 6 damage per shot and so against a Small Reactive Armor (SRA) block which has an armor value of 4, each projectile will do 6 - 4 = 2 Damage (PDD). Here is where we meet my first assumption and my first unknown: Can PDD ever be zero? Mathmatically, using the equation I have described, a Vulcan Turret Mk2 will do 0 dmage to a Large Reactive Armor (LRA) block due to the armor rating of 6. A pertinent piece of data in this case is that it is reasonable to assume that there is some lower limit for damage done to a module, given that if the equation did not have any lower limit, firing a chaingun at a LRA block would cause -2 damage, effetively healing it. The question therefore is not IF there is a mimimum value to the PDD, but what said minimum is. This question applies to ALL forms of weapons.
+
+When we examine DPS things get slightly more complicated. Breaking down the equation sequentially, PDD has already been discussed, so next up is Projectile Count. This one is self-explainitory, but still leads to a important question: How many projectiles does the Gaussian War Shotgun fire? Based on frame-by-frame analysis, it appears that it fires 9 pellets in a group of 5 followed by a group of 4, however it may be two groups of 5, as it is hard to tell when pelets overlap. Fire Rate in the context of this equation is Average Fire Rate given in the Expert View. We do know that certian weapons fire in bursts, but HC has provided very few details on Burst Cycle Time and Burst Fire Rate. Instantaeous fire rate can be found under ATS in the JSON file linked above, however without cycle time the information is not extremely valuable. Lack of Burst Fire data does prevent us from making Maximum Burst DPS calculations but the DPS/S figure should provide a better idea of the overall performance of a weapons anyway, so we will continue without burst data for now. Here is where things get into an assumptive grey area: Hit Rate & Damage Drop Off Unlike with Missiles and Point Defence Systems (PDTs), no data exists either in game or in the JSON file describing the accuracy or projectile speed for ballistic weapons. Without this, I have been making the assumption that ballistic shots have a hit chance of 100%. The question then becomes - Does anyone have a better answer? Now for the most interesting part of the euqation - Damage Drop Off. For reference DDO is given as a value in the JSON file and appears as non-zero under piercing ballistics, indicating that it represents how damage of a shot effects subsquently encountered targets. We encounter many questions immidately:
+
+Does DDO occur per square or per module?
+
+Is the damage of the subsquent encounter PreviousDamage * DDO, or is it PreviousDamage * (1-DDO). From what I can tell, both styles of calculation are used in the JSON file, so it is hard to make an accurate prediction.
+
+How is maximum penetration depth determined? There are a few ways to approach this. This first is to assume that a single shot from a piercing weapon will penetrate through any modules encountered until its damage drops below a certian level. If that is the case, the question then becomes what level that is. If it is the minimum integer (1) we run into cases where expectations do not match measured results, because in this instance if we assume that DDO occurs per module, then a Capital Cannon Mk2 should be able to damage 5-7 modules. In practice I normally see only 2-4 hit. The other way to approach this is that there is a fixed depth, but practice does not seem to bear this out either.
+
+What counts as an encounter? Does hitting a shield trigger DDO? If so, could stacking shields limit the effect of piercing weapons?
+
+If we are going to add DDO into the DPS/S euquation, should we turn the expected encounters and their related damage into a multiplier (ex. 1.75 if the cumulative expected piercing damage adds up to an additional 75% of the initial damage) and have it act on the equation as shown or is there a better way to include this?
+
+Translating a DPS to DPS/S is as straitforward as the equation indicates. In my case, I include the power requirements of the module in the total block count, bceause it provides a realistic description of the DPS for the entire ship. There are cases where a module takes up so much power that it is not worth the damage output, as you could instead use a larger number weapons with a lower individual damage density which results in a greater overall DPS due to a reduction in required power blocks. The only question I have here is if I should be rounding up to the nearest whole block for each weapon. I do this currently because it is impossible to place half a block of a reactor and so rounding up makes the DPS/S for each weapon more conservative (though also increases the error rate when using many of the same weapon). It is worth noting that I base the Reactor Power per Square on the least efficient reactor I intend to use OR the avereage of the reactors I expect to use in the ship, but both are inexact methods that require an intuitive best guess, as making repeated calculations with changing reactors would result in a calculation loop. This is, however, a very important consideration. For example, against a shield (Armor = 0), if you can only use small reactors, Vulcan Turret Mk2 is the most efficient DPS/S, but if you have space for a Grand Reactor, Mass Driver Mk2 is the most efficient.
+
+Ballistics Questions Summary
+What is the Damage Floor for a single projectile?
+
+Does anyone have a definitve count of Gaussian War Shotgun pellet count?
+
+Does anyone have any input on Ballistic Accuracy that can be backed up with any form of evidence?
+
+Is DDO per square or per module?
+
+How does DDO play into the damage equation?
+
+How is Penetration Depth determined?
+
+What counts as a Piercing Shot Encounter?
+
+What is the best method for adding piercing damage to the overall DPS/S equation?
+
+Missiles / Rockets / Torpdeos
+*Note - Mines don't fit in with anything else here so I will forgo discussing them.
+
+Reference Document: https://pastebin.com/sS5Fi56P Reference Thread: https://www.reddit.com/r/SpaceArena/comments/7xg1t4/data_discussion_and_hard_numbers/
+
+Equations
+Generalized Equations:
+
+Actual Projectile Damage Done (PDD) = Projectile Damage - Armor
+
+DPS = PDD * Projectile Count * Fire Rate * Hit Chance/Rate * AOE
+
+DPS/Square (DPS/S) = DPS / (Module Block Count + Required Power Blocks) where Required Power Blocks =
+
+RoundUpInteger(Required Module Power / (Reactor Power Output / Reactor Block Count))
+
+Discussion
+See Ballistics section for discussion surronding PDD. It's the same there as here. Projectile Count - You would expect that this would be obvious, however some modules, such as the arsenal wall, do not give a projectile count. Also, it is unclear if Average Fire Rate takes the number of projectiles into consideration. I use the assumption that Average Fire Rate is per-burst, regardless of projectile count, as to do otherwise results in what I consider unreasonable damage values.
+
+Hit Chance is really the tricky one here. In the JSON file, I can get values for Missile Accuracy, Missile Speed, PDT Fire Rate, Etc, and from the in game view I can get PDT hit rates. Right now the way I calculate hit rate for a missile weapon is convoluted and relies heavily on assumptions. Here Goes: The JSON File gives Missle Speed (MSPD), which I made the Assumption is given in Blocks/Sec. From this I can calculate the time a rocket spends in a single block. Time for some context - If you look in the JSON file "PDMSC", "PDMNC" and "PDTC" corrospond to to the Missle, Mine, and Torpedo kill chance for the PDTs (in the 1-x fashion). PDR appears to be Point Defence Reflect. That leaves PDD as an unknown value. First Question so far - What does it actually mean? I make the assumption that PDD is point defence duration and is the inverse of fire rate which makes the PDT fire rate 10 Shots/Sec. This appears to agree well with observed fire rates. Next I have to make an assumption of the range of the PDT which is not given even in the JSON file. Because PDTs are often not mounted on the front of a ship, the question becomes effective range, which is how many blocks the PDT can reach beyond the edge of the ship. I tried to evaluate some recordings and came up with 10 blocks as an estimate for my build style, however I would really appriciate any input here anyone has to offer. Another consideration for hit rate of rockets is the number of PDS that have a shot at any single rocket. For my calculations I generally assume 2 PDTs because I don't often see people run with only one. So now that we have all that data, lets take a crack at calculating the hit rate of a salvo of rockets from a Flack Turet Mk2: We have a rocket speed of 180 blocks/sec, which translates to 0.00556 sec/block. Assuming that the PDTs both have an effective range of 10 blocks, this gives a time in range of 0.0556 seconds. If a PDT can attempt firing every 0.1 sec, that means each PDT only get a single firing oppertunity while the rockets are in range. This is a total of 2 firing oppertunities for the PDTs against the Salvo. This means that 6 - 2 = 4 of the rockets are gurenteed to hit because they will impact the shield/ship/etc before the turrets reset. This does mean, however, that 2 rockets may be countered. Now we enter the realm of statistics. Let's assume the worst case senario of both PDTs being PDT Mk2, which have a 60% chance to kill a incomming rocket. The statistical equations are different for 2 missiles and two PDTs vs two PDTs each having a shot on the same rocket, but it in this case it works out nicely because survival rate is higher if they attack seperate targets. In this case the overall hit rate is (NumberGarunteedHits + ((1 - Kill Chance) * PDTFireOppertunities) / Total Projectiles = (4 + ((1 - 0.60) * 2) / 6 = 0.8 = 80% Hit Rate. Replace the multiplication sign with a carat (power symbol " ^ " for if there is only one target but multiple PDT Fire Opps). This equation provide results which reasonably agree with tests, IF all your assumptions are correct. For example, the hit rate for a Rocket Launcher MK1 is only 16% aginst two PDT Mk2, which is about right for what I saw in testing. Unfortuately the number of assumptions I have to make for this is MASSIVE. Any corrections, inputs, etc on any of the assumptions made here would be greatly, greatly appriciated.
+
+And the last question for this section is on how to properly account for AOE damage of explosive weapons. First off, one thing I do not know, which is extremely important (not so much for calculation for but for gameplay and ship design) is - How does the AOE damage of a explosion interact with shields? If the shield edge is very close to an armor block, enough so that the armor block is within the AOE, does the armor block take damage from the explosion? If so, is it full damage, or reduced damage based on the amount the shield absorbed? Currently, my calculations merely multiply all damage from missles with a radius >1 by 2 (damages two modules on average) and all torpedos with a radius >2 by 3, (damages 3 modules on average). This is an extremely crude method and any better suggestions are welcomed.
+
+Edit: I totally forgot to mention that I have absolutely no clue how to use the MACC data from the JSON file. rockets tend to have values between 160-220, however the less accurate rockets are the 220 rated ones. If anyone has any clue about how this works, please share.
+
+Explosives Questions Summary
+Projectile Count for Arsenal Wall?
+
+Any input on the Hit Chance calculations?
+
+How do AOEs interact with shields?
+
+Does anyone have a better idea for accounting for AOE damage?
+
+Lasers
+*Note - Sentury Laser Mk2 breaks my spreadsheet and all my equations because negative power is stupid so I won't take it into consideration.
+
+Reference Document: https://pastebin.com/sS5Fi56P
+
+Reference Thread: https://www.reddit.com/r/SpaceArena/comments/7xg1t4/data_discussion_and_hard_numbers/
+
+Equations
+Laser Damage Done = (((Damage * Duration) * (1 - Reflect)) - Armor)
+
+DPS/S equation is the same as all the others.
+
+Discussion
+Alright here we go, time to talk about everyone's most ambiguious damage equation... All of my questions revolve around what, exactly, the equation is for laser damage. Let's take on the most obvious question first - Is laser damage effected by armor value (not reflect, we will get to that in a minute)? My current best guess is that it appears in the equation as shown. Rather than re-type everything out here, have a look here for u/tali713 explination: https://www.reddit.com/r/SpaceArena/comments/7xg1t4/data_discussion_and_hard_numbers/du95bw0/
+
+As for how reflect plays in to the equation, it seems clear that it is a flat multiplier, and that a block with a reflect value of 60 would only take (1 - 0.60) = 0.4 = 40% of the damage because of the reflect value. If you disagree, let me know.
+
+The next questions then becomes how duration plays into the equation. I posit that with lasers the "damage" trait is actually DPS and is multiplied by the firing duration as shown above, resulting in somewhat reasonable damage outputs.
+
+So since I started writing this, I got a response from u/Lana_HC which confirms that longer duration = more damage, suggesting that my Damage = DPS supposition is correct. Link: https://www.reddit.com/r/SpaceArena/comments/8n004n/need_clarification_from_hc_on_laser_damage/dzvfng0/ One could argue that it may be more complicated than just Damage * Duration, and if you have any evidence to suggest otherwise, please let me know.
+
+Another unknown with lasers is how often damage is applied during the laser firing cycle. The Fusion Ray, for example appears to apply damage over the course of the 1.5 second firing time. The generalized questions then become "when, and how often, is laser damage applied?" and "If armor is included in the equation, does the armor damage reduction apply to each damage tick?". I would submist as evidence the fact that a fusion laser can destroy a module and then continue burning through another module in the same firing, suggesting that damage is applied multiple times during the firing.
+
+The last question I have, at least for the moment, is on laser cooldown and fire cycle. Let's look at the Pulse laser Mk3 - Fire Rate = 5 shots/sec, Duration = 0.35 sec. 5 shots per second gives one shot every 0.2 seconds. Does this cooldown start at the beginning of the laser shot, or only one it completes? My hope is that it starts as soon as the laser fires, because otherwise the true fire rate is one shot per 0.35 + 0.2 = 0.55 sec or ~2 shot per second. There is also the question of the impact to burst fire here. Observations suggest that it is a true 5.0 shots per second, however its somewhat hard to get enough clear frames to test impractically. Thoughts?
+
+Laser Questions Summary
+How does armor play into laser damage?
+
+How often is laser damage applied during a single firing? If it applies multiple times, assuming the armor rating is part of the equation, does the armor rating apply each tick?
+
+When does the shot timer start for lasers? At the begining or the end of the shot?
+
+General Summary
+Is anyone still reading this? If you are, I'm shocked. There are 17,174 characters here, and you read them all! Well if you have made it this far you probably actually care about the topic and so I may be able to count on you to help me out. Thanks in advance for any insight you can provide. If you see a question I should have asked but didn't, or if I made some mistake, call it out. I want to get this all right. Mostly so we can put it in the wiki and have no errors. So yeah... let me know what you think!
+
+
+where:
+
+{"name": "Name",
+ "rl": "Required_Level",
+ "i": "i",
+ "t": "t",
+ "c": "c",
+ "w": "Width",
+ "h": "Height",
+ "a": "Armor",
+ "r": "Reflect",
+ "pu": "Power_Use",
+ "pg": "Power_Generation",
+ "m": "Mass",
+ "ep": "Thrust_Power",
+ "ts": "Turn_Power",
+ "hlt": "Health",
+ "er": "Reactor_Explosion_Radius",
+ "ed": "Reactor_Explosion_Damage",
+ "cst": "Cost",
+ "hcst": "Celestium_Cost",
+ "dmg": "Damage",
+ "ats": "Instantanious_Fire_Rate",
+ "fc": "Fire_Cone",
+ "ss": "ss",
+ "rng": "Range",
+ "ip": "ip",
+ "imf": "imf",
+ "rp": "rp",
+ "rf": "rf",
+ "msd": "Laser_Duration",
+ "mer": "Missile_Explosion_Radius",
+ "mc": "Missile_Count",
+ "mef": "Missile_Explosion_Force",
+ "mlf": "mlf",
+ "mspd": "Missile_Speed",
+ "macc": "Missile_Accuracy",
+ "mfj": "mfj",
+ "sr": "Shield_Radius",
+ "sa": "Shield_Strength",
+ "smr": "Max_Regeneration",
+ "srs": "Regen_Speed",
+ "ddo": "Damage_Dropoff",
+ "dur": "Afterburner_Duration",
+ "cd": "cd",
+ "mvmb": "mvmb",
+ "tb": "tb",
+ "dc": "dc",
+ "pdr": "pdr",
+ "pdmsc": "pdmsc",
+ "pdmnc": "pdmnc",
+ "pdtc": "pdtc",
+ "pdd": "pdd",
+ "Visible": "Visible",
+ "Modification": "Modification",
+ "ModDescription": "ModDescription"}

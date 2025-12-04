@@ -1,0 +1,72 @@
+Defense modules are split into 3 types: Shield, Armor, and System. Some modules have alternative versions that are either purchasable in Black Market, or unlocked after beating a sector.
+
+Armor, a defense module, friendly weapons behind armor can shoot over it. Armor modules tend to have much higher health than all the other modules. Armor modules also have two main parameters – reflect and armor.
+
+Reflect is a percent of laser damage that is blocked, meaning, an armor block with 60% reflect would take only 40% of the lasers original damage.
+
+Armor is a flat rate damage reduction against ballistics and missiles. It does not affect lasers. The reason some low damage ballistics are able to destroy high armor armors is the ramp up mechanic.
+
+The most effective weapon type against armor are missiles due to some factors. Missiles have a high individual damage that is not impacted by armor’s armor or reflect parameters. Missiles have a blast radius that allows one missile to do damage to multiple armor cells and possibly hit modules hidden behind armor (if a missile has 30 damage and hits all 9 cells of a 3x3 armor module, the missile does 270 damage).
+
+Shield, a defense module, creates a bubble of protective layer around itself, blocking projectiles. The shield lasts a fixed amount of damage before disappearing. Shields (except Bunker Shields) regenerate their shields over time but the regenerated amount is also limited. Laser weapons completely bypass shields. All shield modules are 0 armor, 0% reflect.
+
+If you hit two (or more) shields at the same time, only one of the shields will receive damage. In this situation, the first shield that satisfies the conditions in the game code will be damaged. Shields created by the shield modules have varying hidden armor stats that cannot be upgraded.
+
+
+Weapons are split into 3 types: Ballistics, Missiles, and Lasers. Weapons in the Missile category also includes Torpedo and Mine weapons.
+
+Some weapons have alternative versions that are either purchasable in Black Market, or unlocked after beating a campaign.
+
+Ballistic, bread and butter weapon type. Most are strong against shields and less so against armor. Two fire modes: Normal and Burst.
+
+Ballistic DPS = (Damage - Armor) * Fire Rate
+Penetrating Damage calculation:
+Dmg(C1): Damage - Armor(C1). C stands for Cell
+Dmg(C2): (Dmg(C1) x Pen x (1-AntiPen)) - Armor(C2)
+Dmg(Cn): (Dmg(Cn-1) x Pen x (1-AntiPen)) - Armor(Cn)
+
+
+Missile, strong against armor and has splash damage, and most of them have tracking and generally have long range. However, they are weak against shields and point defense turrets.
+
+There are four types of missiles:
+
+Single-Fire. Missile(s) fired simultaneously and track target’s movement: Rocket Launcher, Rocket Turret, Missile Launcher, Impact Missile, Flak Rocket Turret, Hydra Rocket Turret.
+Rapid-Fire. Multiple rockets fired sequentially and track target’s movement: Rocket Turret BM1, Arsenal Wall, Scorpion Launcher.
+Torpedoes. Projectiles have a rounded nose and move toward target with limited or no tracking: Torpedo Launcher, Warhead Launcher, EMP Launcher.
+Mines. Round spiked mines are dispersed from the module and float in space without any thrust: Mine Launcher.
+Missile DPS = Damage x FireRate x AvgCellsHit
+≈AvgCellsHit
+High Avg ≈ Radius²/2
+Low Avg ≈ Radius²/4
+Averages may vary widely due to shape of target and location hit, the formulas above provide rough estimates for calculation purposes.
+
+Laser, completely bypass shields, however they do the least damage against armor and generally requires a lot of power to operate. Lasers do continuous damage the longer they're fired. Do not have reflect.
+
+Laser mechanics
+
+The listed damage of a laser is the damage done to a target with any armour and - reflect if the laser is allowed to fire for the full duration.
+Lasers deal damage periodically (unknown period).
+The damage dealt each period is adjusted by the targeted module's reflect.
+Laser damage is not affected by the "Armor" parameter of armor modules.
+Once the laser stops firing (either by the enemy ship leaving the firing arc or the laser reaching its full duration) the reload time begins.
+This means that in order to deal maximum DPS, the laser needs to fire for the full duration.
+Here are the main laser types and how to identify them during the battle.
+
+Rapid-Fire: pulsing blue beams connect the module to the target. Beam appears more intermittent than that of fusion weapons
+
+Small Laser
+Pulse Laser
+Beam: orange beam connects the module to the target until target moves outside of range or firing cycle completes
+
+Laser Beam
+Laser Turret
+Arcfusion Array
+Fusion: constant beam connects module to the target. Continues firing if target moves out of range or firing arc
+
+Fusion Ray
+Fusion Turret
+Melee Fusion Turret
+Heavy Laser: thick pink beam connects the module to the target
+
+Doomsday Laser
+Maximum Laser DPS = (Laser Damage(100-Reflect)%)xLaser Duration÷(Laser Duration + 1/Fire Rate)

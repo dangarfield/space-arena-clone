@@ -1,0 +1,387 @@
+{
+  "projectiles": {
+    "ballistic": {
+      "default": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.015,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x1": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.012,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x1_2": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.012,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x2": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.015,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x3": {
+        "sprite": "/images/effects/ballistic-03.png",
+        "scale": 0.02,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x3_2": {
+        "sprite": "/images/effects/ballistic-03.png",
+        "scale": 0.02,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic1x5": {
+        "sprite": "/images/effects/ballistic-04.png",
+        "scale": 0.022,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic2x3": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.016,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic2x3_2": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.016,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic2x4": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.013,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic2x7": {
+        "sprite": "/images/effects/ballistic-05.png",
+        "scale": 0.025,
+        "rotationOffset": 1.5708
+      },
+      "Ballistic2x7_2": {
+        "sprite": "/images/effects/ballistic-05.png",
+        "scale": 0.025,
+        "rotationOffset": 1.5708
+      },
+      "BallisticTurret2x2": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.014,
+        "rotationOffset": 1.5708
+      },
+      "BallisticTurret2x2_2": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.014,
+        "rotationOffset": 1.5708
+      },
+      "BallisticTurret2x2_3": {
+        "sprite": "/images/effects/ballistic-02.png",
+        "scale": 0.014,
+        "rotationOffset": 1.5708
+      },
+      "BallisticTurret3x3": {
+        "sprite": "/images/effects/ballistic-03.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      },
+      "BallisticTurret3x3_2": {
+        "sprite": "/images/effects/ballistic-03.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      },
+      "Shotgun2x3": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "Shotgun3x4": {
+        "sprite": "/images/effects/ballistic-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "PiercingBallistic1x4": {
+        "sprite": "/images/effects/ballistic-04.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      },
+      "PiercingBallisticTurret3x3": {
+        "sprite": "/images/effects/ballistic-04.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      },
+      "PiercingBallisticTurret3x3_2": {
+        "sprite": "/images/effects/ballistic-04.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      }
+    },
+    "missile": {
+      "default": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher1x2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher1x2_2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher1x3": {
+        "sprite": "/images/effects/missile-02.png",
+        "scale": 0.012,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher1x4": {
+        "sprite": "/images/effects/missile-03.png",
+        "scale": 0.014,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher2x3": {
+        "sprite": "/images/effects/missile-02.png",
+        "scale": 0.011,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher2x3_2": {
+        "sprite": "/images/effects/missile-02.png",
+        "scale": 0.011,
+        "rotationOffset": 1.5708
+      },
+      "RocketLauncher2x3_3": {
+        "sprite": "/images/effects/missile-02.png",
+        "scale": 0.011,
+        "rotationOffset": 1.5708
+      },
+      "RocketTurret2x2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketTurret2x2_2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketTurret2x2_3": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketTurret3x4": {
+        "sprite": "/images/effects/missile-04.png",
+        "scale": 0.015,
+        "rotationOffset": 1.5708
+      },
+      "RocketTurret3x4_2": {
+        "sprite": "/images/effects/missile-04.png",
+        "scale": 0.015,
+        "rotationOffset": 1.5708
+      },
+      "MissileBattery4x2": {
+        "sprite": "/images/effects/missile-02.png",
+        "scale": 0.01,
+        "rotationOffset": 1.5708
+      },
+      "RocketFlakTurret3x3": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.009,
+        "rotationOffset": 1.5708
+      },
+      "RocketFlakTurret3x3_2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.009,
+        "rotationOffset": 1.5708
+      },
+      "TorpedoLauncher1x4": {
+        "sprite": "/images/effects/missile-05.png",
+        "scale": 0.018,
+        "rotationOffset": 1.5708
+      },
+      "TorpedoLauncher2x4": {
+        "sprite": "/images/effects/missile-05.png",
+        "scale": 0.022,
+        "rotationOffset": 1.5708
+      }
+    },
+    "laser": {
+      "default": {
+        "color": "0xff0000",
+        "width": 0.1,
+        "alpha": 0.8
+      },
+      "Laser1x1": {
+        "color": "0xff4444",
+        "width": 0.08,
+        "alpha": 0.7
+      },
+      "Laser1x1_2": {
+        "color": "0xff6666",
+        "width": 0.08,
+        "alpha": 0.7
+      },
+      "Laser1x2": {
+        "color": "0xff0000",
+        "width": 0.1,
+        "alpha": 0.8
+      },
+      "Laser1x2_2": {
+        "color": "0xff2222",
+        "width": 0.1,
+        "alpha": 0.8
+      },
+      "Laser1x2_3": {
+        "color": "0xff1111",
+        "width": 0.1,
+        "alpha": 0.8
+      },
+      "PulseLaser2x3": {
+        "color": "0xff8800",
+        "width": 0.12,
+        "alpha": 0.85
+      },
+      "PulseLaser2x3_2": {
+        "color": "0xffaa00",
+        "width": 0.12,
+        "alpha": 0.85
+      },
+      "PulseLaser2x3_3": {
+        "color": "0xffcc00",
+        "width": 0.12,
+        "alpha": 0.85
+      },
+      "Laser2x4": {
+        "color": "0x00ffff",
+        "width": 0.15,
+        "alpha": 0.9
+      },
+      "LaserTurret2x2": {
+        "color": "0xdd0000",
+        "width": 0.1,
+        "alpha": 0.8
+      },
+      "FusionRay1x3": {
+        "color": "0xff00ff",
+        "width": 0.13,
+        "alpha": 0.85
+      },
+      "FusionTurret3x3": {
+        "color": "0xdd00dd",
+        "width": 0.14,
+        "alpha": 0.9
+      },
+      "FusionTurret3x3_2": {
+        "color": "0xff44ff",
+        "width": 0.14,
+        "alpha": 0.9
+      }
+    },
+    "mine": {
+      "default": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.008,
+        "rotationOffset": 0
+      },
+      "MineLauncher3x2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.008,
+        "rotationOffset": 0
+      },
+      "MineLauncher3x2_2": {
+        "sprite": "/images/effects/missile-01.png",
+        "scale": 0.008,
+        "rotationOffset": 0
+      }
+    },
+    "point_defense": {
+      "sprite": "/images/effects/missile-01.png",
+      "scale": 0.015,
+      "rotationOffset": 1.5708,
+      "color": "0xffaa00",
+      "speed": 50,
+      "maxLifetime": 2
+    },
+    "junk": {
+      "color": "0x888888",
+      "size": 0.5,
+      "alpha": 0.6
+    }
+  },
+  "explosions": {
+    "missile": {
+      "scale": 0.05
+    },
+    "reactor": {
+      "scale": 0.15
+    },
+    "module": {
+      "scale": 0.1
+    }
+  },
+  "effects": {
+    "warp": {
+      "color": "0x00ffff",
+      "alpha": 0.7,
+      "duration": 500
+    },
+    "shield_hit": {
+      "color": "0x4444ff",
+      "alpha": 0.5,
+      "duration": 200
+    },
+    "missile_trail": {
+      "sprite": "/images/effects/smoke.png",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": 15,
+      "lifespan": 800,
+      "speed": 2,
+      "scaleStart": 0.003,
+      "scaleEnd": 0.003,
+      "alphaStart": 0.3,
+      "alphaEnd": 0,
+      "emitRate": 3,
+      "blendMode": "ADD",
+      "depth": 3
+    },
+    "explosion": {
+      "sprite": "/images/effects/explosion.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 14,
+      "frameRate": 30,
+      "depth": 12
+    },
+    "smoke": {
+      "sprite": "/images/effects/smoke.png",
+      "frameWidth": 256,
+      "frameHeight": 256,
+      "frames": 25,
+      "frameRate": 20,
+      "alpha": 0.7,
+      "depth": 11
+    }
+  },
+  "modules": {
+    "shield": {
+      "lineColor": "0x4444ff",
+      "lineAlpha": 0.5,
+      "lineWidth": 0.2,
+      "fillAlpha": 0.2
+    },
+    "point_defense": {
+      "lineColor": "0xffaa00",
+      "lineAlpha": 0.4,
+      "lineWidth": 0.2,
+      "fillColor": "0xffaa00",
+      "fillAlpha": 0.1
+    },
+    "weapon_range": {
+      "lineColor": "0xff4444",
+      "lineAlpha": 0.3,
+      "lineWidth": 0.1,
+      "fillColor": "0xff4444",
+      "fillAlpha": 0.1
+    }
+  }
+}

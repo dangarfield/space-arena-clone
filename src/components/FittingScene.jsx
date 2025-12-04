@@ -101,7 +101,7 @@ export default function FittingScene(props) {
   
 
   
-  const shipLevel = () => ship()?.unlockLevel || 1;
+  const shipLevel = () => ship()?.unlockLevel || ship()?.lr || 1;
   const maxModuleLevel = () => shipLevel() + 5;
   
   // Convert ship grid to shape format
@@ -198,7 +198,22 @@ export default function FittingScene(props) {
     }
   });
   
-
+  // Auto-select first module when modules load
+  createEffect(() => {
+    const mods = availableModules();
+    if (!mods || selectedModule()) return; // Only run once
+    
+    // Find first ballistic weapon
+    const firstModule = mods.weapons.find(m => {
+      const name = m.name.toLowerCase();
+      const type = m.stats.Type?.toLowerCase() || '';
+      return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
+    });
+    
+    if (firstModule) {
+      handleModuleClick(firstModule, 'weapon', 0xff4444);
+    }
+  });
   
   // Filter modules by level requirement and sort by required level
   const availableModules = () => {
@@ -293,6 +308,13 @@ export default function FittingScene(props) {
   const handleCellClick = (col, row) => {
     const selected = selectedModule();
     if (!selected) return;
+    
+    // Check level requirement
+    const moduleLevel = selected.module.requiredLevel || 0;
+    if (moduleLevel > maxModuleLevel()) {
+      alert(`Module requires level ${moduleLevel}, but ship can only use modules up to level ${maxModuleLevel()}`);
+      return;
+    }
     
     if (canPlace(col, row, selected.size, selected.moduleData)) {
       const newModules = [...placedModules(), {
@@ -410,8 +432,11 @@ export default function FittingScene(props) {
         <h3 style={{ 'font-size': '20px', color: '#00aaff', 'margin-bottom': '0.5rem' }}>
           {ship().name}
         </h3>
-        <p style={{ 'font-size': '14px', 'margin-bottom': '1rem', color: '#aaaaaa' }}>
+        <p style={{ 'font-size': '14px', 'margin-bottom': '0.5rem', color: '#aaaaaa' }}>
           {ship().class}
+        </p>
+        <p style={{ 'font-size': '14px', 'margin-bottom': '1rem', color: '#ffaa00' }}>
+          Level: {shipLevel()} (Max Module: {maxModuleLevel()})
         </p>
         
         {/* Resources */}
@@ -542,19 +567,41 @@ export default function FittingScene(props) {
         
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '3px', 'margin-bottom': '0.5rem' }}>
-          <button onClick={() => { setActiveTab('weapons'); setActiveSubTab('ballistic'); }} style={{
+          <button onClick={() => { 
+            setActiveTab('weapons'); 
+            setActiveSubTab('ballistic');
+            // Auto-select first module
+            const firstModule = availableModules().weapons.find(m => {
+              const name = m.name.toLowerCase();
+              const type = m.stats.Type?.toLowerCase() || '';
+              return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
+            });
+            if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
+          }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'weapons' ? '#ff4444' : '#003366',
             color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
           }}>
             WEAPONS
           </button>
-          <button onClick={() => { setActiveTab('defense'); setActiveSubTab('armor'); }} style={{
+          <button onClick={() => { 
+            setActiveTab('defense'); 
+            setActiveSubTab('armor');
+            // Auto-select first module
+            const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('armor'));
+            if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
+          }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'defense' ? '#4444ff' : '#003366',
             color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
           }}>
             DEFENSE
           </button>
-          <button onClick={() => { setActiveTab('utility'); setActiveSubTab('reactor'); }} style={{
+          <button onClick={() => { 
+            setActiveTab('utility'); 
+            setActiveSubTab('reactor');
+            // Auto-select first module
+            const firstModule = availableModules().utility.find(m => m.name.toLowerCase().includes('reactor'));
+            if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
+          }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'utility' ? '#ffaa00' : '#003366',
             color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
           }}>
@@ -566,39 +613,89 @@ export default function FittingScene(props) {
         <Show when={availableModules()}>
           <div style={{ display: 'flex', gap: '2px', 'margin-bottom': '0.5rem', 'flex-wrap': 'wrap' }}>
             <Show when={activeTab() === 'weapons'}>
-              <button onClick={() => setActiveSubTab('ballistic')} style={{
+              <button onClick={() => {
+                setActiveSubTab('ballistic');
+                const firstModule = availableModules().weapons.find(m => {
+                  const name = m.name.toLowerCase();
+                  const type = m.stats.Type?.toLowerCase() || '';
+                  return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
+                });
+                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'ballistic' ? '#ff6666' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Ballistic</button>
-              <button onClick={() => setActiveSubTab('laser')} style={{
+              <button onClick={() => {
+                setActiveSubTab('laser');
+                const firstModule = availableModules().weapons.find(m => {
+                  const name = m.name.toLowerCase();
+                  const type = m.stats.Type?.toLowerCase() || '';
+                  return type.includes('laser') || name.includes('laser');
+                });
+                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'laser' ? '#ff6666' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Laser</button>
-              <button onClick={() => setActiveSubTab('missile')} style={{
+              <button onClick={() => {
+                setActiveSubTab('missile');
+                const firstModule = availableModules().weapons.find(m => {
+                  const name = m.name.toLowerCase();
+                  const type = m.stats.Type?.toLowerCase() || '';
+                  return type.includes('missile') || name.includes('missile') || name.includes('rocket') || name.includes('torpedo');
+                });
+                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'missile' ? '#ff6666' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Missile</button>
             </Show>
             <Show when={activeTab() === 'defense'}>
-              <button onClick={() => setActiveSubTab('armor')} style={{
+              <button onClick={() => {
+                setActiveSubTab('armor');
+                const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('armor'));
+                if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'armor' ? '#6666ff' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Armor</button>
-              <button onClick={() => setActiveSubTab('shield')} style={{
+              <button onClick={() => {
+                setActiveSubTab('shield');
+                const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('shield'));
+                if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'shield' ? '#6666ff' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Shield</button>
             </Show>
             <Show when={activeTab() === 'utility'}>
-              <button onClick={() => setActiveSubTab('reactor')} style={{
+              <button onClick={() => {
+                setActiveSubTab('reactor');
+                const firstModule = availableModules().utility.find(m => m.name.toLowerCase().includes('reactor'));
+                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'reactor' ? '#ffcc66' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Reactor</button>
-              <button onClick={() => setActiveSubTab('engine')} style={{
+              <button onClick={() => {
+                setActiveSubTab('engine');
+                const firstModule = availableModules().utility.find(m => {
+                  const name = m.name.toLowerCase();
+                  return name.includes('drive') || name.includes('thruster') || name.includes('engine');
+                });
+                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'engine' ? '#ffcc66' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Engine</button>
-              <button onClick={() => setActiveSubTab('support')} style={{
+              <button onClick={() => {
+                setActiveSubTab('support');
+                const firstModule = availableModules().utility.find(m => {
+                  const name = m.name.toLowerCase();
+                  return name.includes('repair') || name.includes('point defense') || name.includes('defense system');
+                });
+                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
+              }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'support' ? '#ffcc66' : '#002244',
                 color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
               }}>Support</button>
@@ -685,13 +782,14 @@ function ModuleButton(props) {
   };
 
   const powerValue = () => {
-    const generation = props.module.stats['Power Generation'];
-    if (generation) {
-      return `+${generation}`;
-    }
-    const consumption = props.module.stats['Power Use'] || props.module.stats.Power;
-    if (consumption) {
-      return consumption;
+    const generation = parseInt(props.module.stats['Power Generation'] || props.module.pg || '0');
+    const consumption = parseInt(props.module.stats['Power Use'] || props.module.stats.Power || props.module.pu || '0');
+    const net = generation - consumption;
+    
+    if (net > 0) {
+      return `+${net}`;
+    } else if (net < 0) {
+      return `${net}`;
     }
     return null;
   };
