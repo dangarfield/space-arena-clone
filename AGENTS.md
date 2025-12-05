@@ -42,6 +42,11 @@ scripts/                # Data pipeline
 
 See `src/data/data-keys.json` and `DATA_KEYS.md` for complete field mappings.
 
+For comprehensive data analysis and statistics, see:
+- `DATA_ANALYSIS.md` - Statistical analysis with gameplay insights for all attributes
+- `DATA_MODULES.md` - Complete module data tables (all fields, grouped by category)
+- `DATA_SHIPS.md` - Complete ship data tables (all fields, grouped by class)
+
 ### Ship Keys
 - `sa` = Shield_Strength (NOT cells/slots)
 - `lr` = Required_Level (unlock level)

@@ -744,3 +744,10 @@ All combat values come from:
 3. Configurable GUI parameters
 4. Community research and testing
 5. Hardcoded constants (documented above)
+
+## Data Documentation
+For comprehensive data analysis and statistics:
+- `DATA_ANALYSIS.md` - Statistical analysis of all attributes with gameplay insights and balance analysis
+- `DATA_MODULES.md` - Complete module data tables with all fields grouped by category
+- `DATA_SHIPS.md` - Complete ship data tables with all fields grouped by class
+- `DATA_COMPARE.md` - Module statistics comparison tables (curated subset)

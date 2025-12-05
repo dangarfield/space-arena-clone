@@ -161,6 +161,9 @@ pnpm build    # Build for production
 ## Documentation
 
 - `BATTLE.md` - Complete combat mechanics and formulas
+- `DATA_ANALYSIS.md` - Statistical analysis of all modules and ships with gameplay insights
+- `DATA_MODULES.md` - Complete module data tables grouped by category
+- `DATA_SHIPS.md` - Complete ship data tables grouped by class
 - `DATA_COMPARE.md` - Module statistics comparison tables
 - `DATA_KEYS.md` - JSON field mappings
 - `AGENTS.md` - Technical context for AI agents
