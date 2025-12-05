@@ -3,6 +3,8 @@ import ModuleFactory from './modules/ModuleFactory.js';
 import WeaponModule from './modules/WeaponModule.js';
 import EngineModule from './modules/EngineModule.js';
 import WarpModule from './modules/WarpModule.js';
+import AfterburnerModule from './modules/AfterburnerModule.js';
+import RepairBayModule from './modules/RepairBayModule.js';
 import PointDefenseModule from './modules/PointDefenseModule.js';
 import { hydrateShipConfig } from '../utils/shipHydration.js';
 import GUI from 'lil-gui';
@@ -18,6 +20,13 @@ export default class BattleScene extends Phaser.Scene {
   preload() {
     // Store visual config
     this.visualConfig = visualEffectsConfig;
+    
+    // Preload starfield background images
+    if (this.visualConfig.starfield?.backgroundImages) {
+      this.visualConfig.starfield.backgroundImages.forEach((path, index) => {
+        this.load.image(`starfield_bg_${index}`, path);
+      });
+    }
     
     // Load all projectile sprites
     const spritesToLoad = new Set();
@@ -37,6 +46,13 @@ export default class BattleScene extends Phaser.Scene {
       spritesToLoad.add(this.visualConfig.projectiles.point_defense.sprite);
     }
     
+    // Collect mine sprites
+    if (this.visualConfig.projectiles.mine) {
+      Object.values(this.visualConfig.projectiles.mine).forEach(config => {
+        if (config.sprite) spritesToLoad.add(config.sprite);
+      });
+    }
+    
     // Load unique sprites
     spritesToLoad.forEach(spritePath => {
       const key = spritePath.split('/').pop().replace('.png', '');
@@ -53,11 +69,21 @@ export default class BattleScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32
     });
+    
+    // Load repair effect spritesheet (128x32, 4 frames of 32x32)
+    this.load.spritesheet('repair', '/images/effects/repair-01.png', {
+      frameWidth: 32,
+      frameHeight: 32
+    });
   }
 
   init(data) {
     this.playerConfig = data.playerConfig;
     this.enemyConfig = data.enemyConfig;
+    this.props = {
+      onBack: data.onBack,
+      onVictory: data.onVictory
+    };
   }
 
   async create() {
@@ -104,26 +130,14 @@ export default class BattleScene extends Phaser.Scene {
     this.activeBeams = [];
     this.effects = [];
     this.junkPieces = [];
+    this.mines = [];
+    this.battleEnded = false;
     
     // Camera - no bounds, allow free movement
     // this.cameras.main.setBounds(0, 0, 1200, 800);
     
-    // Debug grid
-    const gridSize = 10;
-    const gridExtent = 200;
-    this.gridGraphics = this.add.graphics({ lineStyle: { width: 0.1, color: 0x333333 } });
-    
-    for (let x = -gridExtent; x <= gridExtent; x += gridSize) {
-      this.gridGraphics.lineBetween(x, -gridExtent, x, gridExtent);
-    }
-    for (let y = -gridExtent; y <= gridExtent; y += gridSize) {
-      this.gridGraphics.lineBetween(-gridExtent, y, gridExtent, y);
-    }
-    
-    // Highlight origin
-    this.gridGraphics.lineStyle(0.2, 0x00ff00);
-    this.gridGraphics.lineBetween(-5, 0, 5, 0);
-    this.gridGraphics.lineBetween(0, -5, 0, 5);
+    // Create parallax starfield
+    this.createStarfield();
     
     // Direction indicators (added to containers) - point up in local space
     this.playerDirection = this.add.graphics({ lineStyle: { width: 0.3, color: 0x4444ff } });
@@ -143,21 +157,102 @@ export default class BattleScene extends Phaser.Scene {
     this.setupGUI();
   }
   
+  createStarfield() {
+    // Get starfield config
+    const config = this.visualConfig?.starfield || {
+      layers: [
+        { count: 200, tileSize: 1024, sizeMin: 0.3, sizeMax: 0.8, alphaMin: 0.3, alphaMax: 0.6, parallax: 0.1, depth: -100 },
+        { count: 100, tileSize: 1024, sizeMin: 0.5, sizeMax: 1.5, alphaMin: 0.5, alphaMax: 0.9, parallax: 0.3, depth: -50 }
+      ]
+    };
+    
+    this.starLayers = [];
+    
+    config.layers.forEach((layerConfig, index) => {
+      // Skip layer if show is false
+      if (layerConfig.show === false) return;
+      
+      let textureKey;
+      
+      // Use background image if specified, otherwise generate stars
+      if (layerConfig.useBackgroundImage && config.backgroundImages && config.backgroundImages.length > 0) {
+        // Pick a random background image
+        const randomIndex = Math.floor(Math.random() * config.backgroundImages.length);
+        textureKey = `starfield_bg_${randomIndex}`;
+      } else {
+        // Create a texture for this layer
+        textureKey = `starfield_layer_${index}`;
+        const texture = this.textures.createCanvas(textureKey, layerConfig.tileSize, layerConfig.tileSize);
+        const ctx = texture.getContext();
+        
+        // Draw stars on the texture
+        for (let i = 0; i < layerConfig.count; i++) {
+          const x = Math.random() * layerConfig.tileSize;
+          const y = Math.random() * layerConfig.tileSize;
+          const size = Math.random() * (layerConfig.sizeMax - layerConfig.sizeMin) + layerConfig.sizeMin;
+          const alpha = Math.random() * (layerConfig.alphaMax - layerConfig.alphaMin) + layerConfig.alphaMin;
+          
+          ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(x, y, size, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        texture.refresh();
+      }
+      
+      // Create a tileSprite that covers the entire camera view
+      const tileSprite = this.add.tileSprite(
+        0, 0,
+        this.cameras.main.width * 4,
+        this.cameras.main.height * 4,
+        textureKey
+      );
+      tileSprite.setDepth(layerConfig.depth);
+      tileSprite.setOrigin(0.5, 0.5);
+      tileSprite.setScrollFactor(1); // Follow camera normally, we'll handle parallax via scale
+      
+      // Apply tile scale if specified (makes tiles larger/smaller)
+      const tileScale = layerConfig.tileScale || 1.0;
+      tileSprite.setTileScale(tileScale, tileScale);
+      
+      // Apply color tint if specified
+      if (layerConfig.color) {
+        const color = typeof layerConfig.color === 'string' ? 
+          parseInt(layerConfig.color.replace('0x', ''), 16) : 
+          layerConfig.color;
+        tileSprite.setTint(color);
+      }
+      
+      // Apply alpha if specified
+      if (layerConfig.alpha !== undefined) {
+        tileSprite.setAlpha(layerConfig.alpha);
+      }
+      
+      this.starLayers.push({ 
+        tileSprite: tileSprite,
+        parallaxFactor: layerConfig.parallax,
+        baseScale: 1.0 // Store base scale for zoom compensation
+      });
+    });
+  }
+  
   setupGUI() {
     this.gui = new GUI({ title: 'Battle Debug' });
     
     this.debugSettings = {
       showModules: true,
-      showGrid: true,
+      showStarfield: true,
       showFiringCones: true,
       showDirectionLines: false,
       showShields: true,
+      showDebugPanel: false,
       enableEngines: true,
       enableWeapons: true,
       timeScale: 1.0,
-      turnMultiplier: 0.02,
-      thrustMultiplier: 0.0001,
-      ballisticSpeed: 400,
+      turnMultiplier: 10,
+      thrustMultiplier: 1,
+      ballisticSpeed: 40,
       missileSpeed: 30,
       missileLaunchAngle: 30,
       missileTrackingDelay: 0.5,
@@ -185,9 +280,12 @@ export default class BattleScene extends Phaser.Scene {
       });
     });
     
-    viewFolder.add(this.debugSettings, 'showGrid').name('Grid').onChange(v => {
-      if (this.gridGraphics) this.gridGraphics.setVisible(v);
+    viewFolder.add(this.debugSettings, 'showStarfield').name('Starfield').onChange(v => {
+      if (this.starLayers) {
+        this.starLayers.forEach(layer => layer.tileSprite.setVisible(v));
+      }
     });
+    
     
     viewFolder.add(this.debugSettings, 'showFiringCones').name('Firing Cones').onChange(v => {
       this.playerShip.modules.forEach(m => {
@@ -203,13 +301,22 @@ export default class BattleScene extends Phaser.Scene {
       if (this.enemyDirection) this.enemyDirection.setVisible(v);
     });
     
-    viewFolder.add(this.debugSettings, 'showShields').name('Shield Radius').onChange(v => {
+    viewFolder.add(this.debugSettings, 'showShields').name('Shield/PD Radius').onChange(v => {
       this.playerShip.modules.forEach(m => {
         if (m.shieldGraphics) m.shieldGraphics.setVisible(v);
+        if (m.pdGraphics) m.pdGraphics.setVisible(v);
       });
       this.enemyShip.modules.forEach(m => {
         if (m.shieldGraphics) m.shieldGraphics.setVisible(v);
+        if (m.pdGraphics) m.pdGraphics.setVisible(v);
       });
+    });
+    
+    viewFolder.add(this.debugSettings, 'showDebugPanel').name('Debug Modules').onChange(v => {
+      const debugPanel = document.querySelector('.debug-panel');
+      if (debugPanel) {
+        debugPanel.style.display = v ? 'block' : 'none';
+      }
     });
     
     // Battle Actions folder
@@ -222,8 +329,8 @@ export default class BattleScene extends Phaser.Scene {
     const variablesFolder = this.gui.addFolder('Battle Variables');
     
     variablesFolder.add(this.debugSettings, 'timeScale', 0.1, 10, 0.1).name('Time Scale');
-    variablesFolder.add(this.debugSettings, 'turnMultiplier', 0, 0.1, 0.001).name('Turn Speed');
-    variablesFolder.add(this.debugSettings, 'thrustMultiplier', 0, 0.001, 0.00001).name('Thrust Speed');
+    variablesFolder.add(this.debugSettings, 'turnMultiplier', 0, 20, 0.01).name('Turn Speed');
+    variablesFolder.add(this.debugSettings, 'thrustMultiplier', 0, 10, 0.01).name('Thrust Speed');
     variablesFolder.add(this.debugSettings, 'ballisticSpeed', 0, 200, 1).name('Ballistic Speed');
     variablesFolder.add(this.debugSettings, 'missileSpeed', 0, 100, 1).name('Missile Speed');
     variablesFolder.add(this.debugSettings, 'missileLaunchAngle', 0, 90, 1).name('Missile Launch Angle');
@@ -238,6 +345,15 @@ export default class BattleScene extends Phaser.Scene {
     variablesFolder.add(this.debugSettings, 'explosionScale', 1, 5, 0.1).name('Explosion Scale');
     variablesFolder.add(this.debugSettings, 'velocityDamping', 0.9, 1, 0.01).name('Velocity Damping');
     variablesFolder.add(this.debugSettings, 'engagementRangeFactor', 0.1, 1, 0.05).name('Engagement Range %');
+    
+    // Battle Stats folder (read-only displays)
+    const statsFolder = this.gui.addFolder('Battle Stats');
+    this.battleStats = {
+      battleTime: 0,
+      damageMultiplier: 1.0
+    };
+    statsFolder.add(this.battleStats, 'battleTime').name('Battle Time (s)').listen().disable();
+    statsFolder.add(this.battleStats, 'damageMultiplier', 1.0, 5.0).name('Damage Multiplier').listen().disable();
   }
 
 
@@ -254,7 +370,9 @@ export default class BattleScene extends Phaser.Scene {
       velocity: { x: 0, y: 0 },
       modules: [],
       container: container,
-      destroyed: false
+      destroyed: false,
+      speedMultiplier: 1,
+      thrustMultiplier: 1
     };
     
     console.log('=== Creating ship ===');
@@ -354,11 +472,53 @@ export default class BattleScene extends Phaser.Scene {
       return;
     }
     
+    // Track battle time
+    if (!this.battleTime) this.battleTime = 0;
+    this.battleTime += dt;
+    
+    // Calculate damage multiplier (starts at 30s, increases 2% per second)
+    this.damageMultiplier = 1.0;
+    if (this.battleTime > 30) {
+      const secondsAfter30 = this.battleTime - 30;
+      this.damageMultiplier = 1.0 + (secondsAfter30 * 0.02);
+    }
+    
+    // Update GUI stats
+    if (this.battleStats) {
+      this.battleStats.battleTime = Math.floor(this.battleTime);
+      this.battleStats.damageMultiplier = parseFloat(this.damageMultiplier.toFixed(2));
+    }
+    
     this.frameCount++;
     
-    // Update ships
-    this.updateShip(this.playerShip, this.enemyShip, dt);
-    this.updateShip(this.enemyShip, this.playerShip, dt);
+    // Update ship positions and module worldPos FIRST (before AI/combat)
+    this.updateShipPosition(this.playerShip, dt);
+    this.updateShipPosition(this.enemyShip, dt);
+    
+    // Apply friction when battle ends
+    if (this.battleEnded) {
+      const friction = 0.95;
+      this.playerShip.velocity.x *= friction;
+      this.playerShip.velocity.y *= friction;
+      this.playerShip.angularVelocity *= friction;
+      this.enemyShip.velocity.x *= friction;
+      this.enemyShip.velocity.y *= friction;
+      this.enemyShip.angularVelocity *= friction;
+    }
+    
+    // Update afterburners
+    this.updateAfterburners(this.playerShip, dt);
+    this.updateAfterburners(this.enemyShip, dt);
+    
+    // Update repair bays
+    this.updateRepairBays(this.playerShip, dt);
+    this.updateRepairBays(this.enemyShip, dt);
+    
+    // Then update AI and combat (now all worldPos are current)
+    if (!this.battleEnded) {
+      this.updateShipAI(this.playerShip, this.enemyShip, dt);
+      this.updateShipAI(this.enemyShip, this.playerShip, dt);
+    }
     
     // Update projectiles
     this.updateProjectiles(dt);
@@ -379,20 +539,30 @@ export default class BattleScene extends Phaser.Scene {
 
   }
 
-  updateShip(ship, enemyShip, dt) {
+  updateShipPosition(ship, dt) {
     // Update container position and rotation
     // Offset container by +90° since visuals point up but Phaser 0° = right
     ship.container.setPosition(ship.pos.x, ship.pos.y);
     ship.container.setRotation(ship.rotation + Math.PI / 2);
     
-    // Update all modules (for logic, not position)
+    // Update all module worldPos for collision detection
     ship.modules.forEach(module => {
-      // Calculate world position for collision detection
       const worldPos = this.gridToWorld(module.col, module.row, module.size, ship);
       module.worldPos = worldPos;
-      module.update(dt);
+      
+      // Debug: log first module's position once
+      if (!ship._positionLogged && module === ship.modules[0]) {
+        console.log(`Ship at (${ship.pos.x.toFixed(1)}, ${ship.pos.y.toFixed(1)}), first module worldPos: (${worldPos.x.toFixed(1)}, ${worldPos.y.toFixed(1)})`);
+        ship._positionLogged = true;
+      }
+      
+      // Pass enemy ship for modules that need targeting (junk launcher, etc)
+      const enemy = ship === this.playerShip ? this.enemyShip : this.playerShip;
+      module.update(dt, enemy);
     });
-    
+  }
+  
+  updateShipAI(ship, enemyShip, dt) {
     // Warp drive mechanics
     this.updateWarp(ship, enemyShip, dt);
     
@@ -400,6 +570,42 @@ export default class BattleScene extends Phaser.Scene {
     this.updateAI(ship, enemyShip, dt);
   }
 
+  updateAfterburners(ship, dt) {
+    const afterburners = ship.modules.filter(m => m instanceof AfterburnerModule);
+    afterburners.forEach(ab => ab.update(dt));
+    
+    // AI: Activate afterburner when far from enemy or low on health
+    if (!this.battleEnded && afterburners.length > 0) {
+      const enemyShip = ship === this.playerShip ? this.enemyShip : this.playerShip;
+      const distance = Phaser.Math.Distance.Between(
+        ship.pos.x, ship.pos.y,
+        enemyShip.pos.x, enemyShip.pos.y
+      );
+      
+      const aliveModules = ship.modules.filter(m => m.alive).length;
+      const totalModules = ship.modules.length;
+      const healthPercent = aliveModules / totalModules;
+      
+      // Activate if: far away (>300) OR low health (<30%)
+      const shouldActivate = distance > 300 || healthPercent < 0.3;
+      
+      if (shouldActivate) {
+        afterburners.forEach(ab => {
+          if (ab.canActivate()) {
+            ab.activate();
+          }
+        });
+      }
+    }
+  }
+  
+  updateRepairBays(ship, dt) {
+    const repairBays = ship.modules.filter(m => m instanceof RepairBayModule && m.alive);
+    // Only first 3 repair bays are active (wiki limit)
+    const activeRepairBays = repairBays.slice(0, 3);
+    activeRepairBays.forEach(rb => rb.update(dt));
+  }
+  
   updateWarp(ship, enemyShip, dt) {
     const warpModules = ship.modules.filter(m => m instanceof WarpModule && m.alive);
     if (warpModules.length === 0) return;
@@ -495,15 +701,79 @@ export default class BattleScene extends Phaser.Scene {
     // Weapons
     if (this.debugSettings.enableWeapons) {
       const weapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
-      
-      const distance = Phaser.Math.Distance.Between(
-        ship.pos.x, ship.pos.y,
-        enemyShip.pos.x, enemyShip.pos.y
-      );
+      const enemyModules = enemyShip.modules.filter(m => m.alive);
       
       weapons.forEach(weapon => {
-        if (distance <= weapon.range && weapon.canFire()) {
-          weapon.fire(enemyShip);
+        if (!weapon.canFire()) return;
+        
+        // Check if any enemy module is in range AND firing cone
+        const targetsInRange = [];
+        const targetsInCone = [];
+        
+        enemyModules.forEach(enemyModule => {
+          if (!enemyModule.worldPos) return;
+          
+          // Check distance from weapon to enemy module
+          const distance = Phaser.Math.Distance.Between(
+            weapon.worldPos.x, weapon.worldPos.y,
+            enemyModule.worldPos.x, enemyModule.worldPos.y
+          );
+          
+          if (distance <= weapon.range) {
+            targetsInRange.push({ module: enemyModule, distance });
+            
+            // Check if enemy module is in firing cone
+            const angleToModule = Phaser.Math.Angle.Between(
+              weapon.worldPos.x, weapon.worldPos.y,
+              enemyModule.worldPos.x, enemyModule.worldPos.y
+            );
+            
+            // Weapon faces ship's direction
+            const weaponAngle = ship.rotation;
+            const coneHalfAngle = (weapon.fireCone / 2) * (Math.PI / 180);
+            
+            // Calculate angle difference
+            let angleDiff = Phaser.Math.Angle.Wrap(angleToModule - weaponAngle);
+            
+            // Check if within cone
+            if (Math.abs(angleDiff) <= coneHalfAngle) {
+              targetsInCone.push({ module: enemyModule, distance, angleDiff: angleDiff * (180 / Math.PI) });
+            }
+          }
+        });
+        
+        // Debug logging for lasers
+        if (weapon.isLaser) {
+          console.log(`Laser ${weapon.name}: range=${weapon.range}, checking ${enemyModules.length} enemy modules`);
+          console.log(`  Weapon pos: (${weapon.worldPos.x.toFixed(1)}, ${weapon.worldPos.y.toFixed(1)})`);
+          
+          if (targetsInRange.length > 0) {
+            console.log(`  ${targetsInRange.length} targets in range, ${targetsInCone.length} in cone (${weapon.fireCone}°)`);
+            console.log(`  Weapon angle: ${(ship.rotation * 180 / Math.PI).toFixed(1)}°, cone half-angle: ${(weapon.fireCone / 2).toFixed(1)}°`);
+            
+            // Show first few targets
+            const samplesToShow = Math.min(3, targetsInRange.length);
+            for (let i = 0; i < samplesToShow; i++) {
+              const t = targetsInRange[i];
+              const angleToModule = Phaser.Math.Angle.Between(
+                weapon.worldPos.x, weapon.worldPos.y,
+                t.module.worldPos.x, t.module.worldPos.y
+              );
+              const angleDiff = Phaser.Math.Angle.Wrap(angleToModule - ship.rotation);
+              const inCone = Math.abs(angleDiff) <= (weapon.fireCone / 2) * (Math.PI / 180);
+              console.log(`  [${i}] ${t.module.name}: pos=(${t.module.worldPos.x.toFixed(1)}, ${t.module.worldPos.y.toFixed(1)}), dist=${t.distance.toFixed(1)}, angleDiff=${(angleDiff * 180 / Math.PI).toFixed(1)}°, inCone=${inCone}`);
+            }
+          }
+        }
+        
+        if (targetsInCone.length > 0) {
+          if (weapon.isLaser) {
+            console.log(`  Calling fire() for laser ${weapon.name}`);
+          }
+          const fired = weapon.fire(enemyShip);
+          if (weapon.isLaser) {
+            console.log(`  fire() returned: ${fired}`);
+          }
         }
       });
     }
@@ -522,6 +792,10 @@ export default class BattleScene extends Phaser.Scene {
       const totalThrust = engines.reduce((sum, e) => sum + e.getThrustContribution(), 0);
       const totalTurn = engines.reduce((sum, e) => sum + e.getTurnContribution(), 0);
       
+      // Calculate total ship mass from all modules
+      const totalMass = ship.modules.reduce((sum, m) => sum + (parseFloat(m.data.m) || 0), 0);
+      const effectiveMass = Math.max(totalMass, 1); // Prevent division by zero
+      
       // Engines
       if (this.debugSettings.enableEngines) {
         // Calculate distance to enemy
@@ -530,11 +804,12 @@ export default class BattleScene extends Phaser.Scene {
           enemyShip.pos.x, enemyShip.pos.y
         );
         
-        // Rotate towards enemy
+        // Rotate towards enemy (factor in mass for rotational inertia)
         const shipTurnPower = ship.config.ship.ts || 1;
         if (totalTurn > 0) {
           const angleDiff = Phaser.Math.Angle.Wrap(angleToEnemy - ship.rotation);
-          const turnAmount = angleDiff * totalTurn * shipTurnPower * this.debugSettings.turnMultiplier * dt;
+          const turnAcceleration = (totalTurn * shipTurnPower) / effectiveMass;
+          const turnAmount = angleDiff * turnAcceleration * this.debugSettings.turnMultiplier * dt;
           ship.rotation += turnAmount;
         }
         
@@ -565,23 +840,24 @@ export default class BattleScene extends Phaser.Scene {
         // Determine thrust direction based on distance
         let thrustDirection = 0; // 0 = none, 1 = forward, -1 = reverse
         
-        if (distance > engagementDistance * 1.1 && angleDiff < Math.PI / 4) {
+        if (distance > engagementDistance * 1.2 && angleDiff < Math.PI / 4) {
           thrustDirection = 1; // Too far - thrust forward
-        } else if (distance < engagementDistance * 0.9) {
+        } else if (distance < engagementDistance * 0.8) {
           thrustDirection = -1; // Too close - reverse thrust
         }
-        
-
+        // Moderate deadzone (0.8 to 1.2) for balanced movement
         
         if (thrustDirection !== 0 && totalThrust > 0) {
-          // Apply thrust (forward or reverse)
+          // Apply thrust (forward or reverse) - acceleration = thrust / mass
+          const acceleration = totalThrust / effectiveMass;
           const thrustAngle = thrustDirection > 0 ? ship.rotation : ship.rotation + Math.PI;
-          ship.velocity.x += Math.cos(thrustAngle) * totalThrust * this.debugSettings.thrustMultiplier * dt;
-          ship.velocity.y += Math.sin(thrustAngle) * totalThrust * this.debugSettings.thrustMultiplier * dt;
+          const thrustStrength = 0.7; // Moderate thrust strength
+          const shipThrustMult = ship.thrustMultiplier || 1;
+          ship.velocity.x += Math.cos(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+          ship.velocity.y += Math.sin(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
         }
         
-        // Add random lateral movement for more dynamic combat
-        // Apply perpendicular thrust occasionally
+        // Lateral strafing movement
         if (!ship.strafeTimer) ship.strafeTimer = 0;
         ship.strafeTimer += dt;
         
@@ -592,10 +868,12 @@ export default class BattleScene extends Phaser.Scene {
         
         if (ship.strafeDirection && totalThrust > 0) {
           // Apply lateral thrust perpendicular to facing direction
+          const acceleration = totalThrust / effectiveMass;
           const perpAngle = ship.rotation + Math.PI / 2;
-          const strafeStrength = 0.3; // 30% of forward thrust
-          ship.velocity.x += Math.cos(perpAngle) * ship.strafeDirection * totalThrust * strafeStrength * this.debugSettings.thrustMultiplier * dt;
-          ship.velocity.y += Math.sin(perpAngle) * ship.strafeDirection * totalThrust * strafeStrength * this.debugSettings.thrustMultiplier * dt;
+          const strafeStrength = 0.3; // Keep original strafe strength
+          const shipThrustMult = ship.thrustMultiplier || 1;
+          ship.velocity.x += Math.cos(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+          ship.velocity.y += Math.sin(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
         }
         
         // Apply velocity damping (friction/drag)
@@ -710,7 +988,10 @@ export default class BattleScene extends Phaser.Scene {
         
         // Tracking only works after delay and while fuel remains
         if (proj.lifetime > trackingDelay && proj.fuelRemaining > 0 && target && target.alive) {
-          const angleToTarget = Phaser.Math.Angle.Between(proj.x, proj.y, target.worldPos.x, target.worldPos.y);
+          // Get target position (modules use worldPos, junk/mines use x/y)
+          const targetX = target.worldPos ? target.worldPos.x : target.x;
+          const targetY = target.worldPos ? target.worldPos.y : target.y;
+          const angleToTarget = Phaser.Math.Angle.Between(proj.x, proj.y, targetX, targetY);
           // Turn rate scaled by dt for consistent trajectory
           const baseTurnRate = this.debugSettings?.missileTurnRate || 0.05;
           const turnRate = baseTurnRate * (dt / 0.016); // Normalize to 60fps
@@ -767,26 +1048,42 @@ export default class BattleScene extends Phaser.Scene {
         return false;
       }
       
-      // If current target destroyed, find nearest module in range
-      if (!targetModule.alive) {
-        const angle = sourceModule.ship.rotation;
-        const endX = sourceModule.worldPos.x + Math.cos(angle) * sourceModule.range;
-        const endY = sourceModule.worldPos.y + Math.sin(angle) * sourceModule.range;
-        
-        const newTarget = this.raycastToModules(sourceModule.worldPos, { x: endX, y: endY }, targetShip);
-        if (newTarget) {
-          beamData.targetModule = newTarget;
-          console.log(`Laser retargeted to ${newTarget.name}`);
-        }
+      // Check if target is alive
+      let targetAlive = false;
+      if (targetModule.alive !== undefined) {
+        // Module target
+        targetAlive = targetModule.alive;
+      } else if (targetModule.type === 'junk' || targetModule.type === 'mine') {
+        // Junk/mine - check health directly (they're removed from array on next update)
+        targetAlive = targetModule.health > 0;
       }
       
-      // Update beam position to track moving modules
-      if (sourceModule.worldPos && beamData.targetModule.worldPos && beamData.targetModule.alive) {
+      // If current target destroyed or no target, hide beam by setting it to zero length
+      if (!targetModule || !targetAlive) {
+        // Set beam to zero length to hide it
+        if (sourceModule.worldPos) {
+          beam.setTo(
+            sourceModule.worldPos.x,
+            sourceModule.worldPos.y,
+            sourceModule.worldPos.x,
+            sourceModule.worldPos.y
+          );
+        }
+        beam.setVisible(false);
+        // Beam will be cleaned up by duration timer
+        return true;
+      }
+      
+      // Update beam position to track moving targets
+      beam.setVisible(true);
+      const targetPos = targetModule.worldPos || { x: targetModule.x, y: targetModule.y };
+      
+      if (sourceModule.worldPos && targetPos) {
         beam.setTo(
           sourceModule.worldPos.x,
           sourceModule.worldPos.y,
-          beamData.targetModule.worldPos.x,
-          beamData.targetModule.worldPos.y
+          targetPos.x,
+          targetPos.y
         );
       }
       
@@ -856,7 +1153,7 @@ export default class BattleScene extends Phaser.Scene {
     for (const shield of shields) {
       if (shield.isPointInShield(projectile.x, projectile.y)) {
         // Shield blocks projectile
-        let damage = projectile.baseDamage;
+        let damage = projectile.baseDamage * this.damageMultiplier;
         damage = damage - shield.armor;
         damage = Math.max(1, damage);
         
@@ -877,7 +1174,11 @@ export default class BattleScene extends Phaser.Scene {
     
     // Track penetration for piercing weapons
     projectile.penetratedModules = projectile.penetratedModules || 0;
-    const maxPenetration = projectile.ricochetFactor || 0;
+    
+    // Max penetration: rf / 4
+    const rf = projectile.ricochetFactor || 0;
+    const rp = projectile.ricochetPower || 0;
+    const maxPenetration = Math.ceil(rf / 4);
     
     for (const module of sortedModules) {
       const bounds = new Phaser.Geom.Rectangle(
@@ -888,16 +1189,14 @@ export default class BattleScene extends Phaser.Scene {
       );
       
       if (Phaser.Geom.Rectangle.Contains(bounds, projectile.x, projectile.y)) {
-        // Calculate damage with penetration formula from wiki
-        let damage = projectile.baseDamage;
+        // Calculate base damage
+        let damage = projectile.baseDamage * this.damageMultiplier;
         
-        // For subsequent modules (piercing)
+        // For subsequent modules (after penetrating first)
         if (projectile.penetratedModules > 0) {
-          // Wiki formula: Dmg(Cn) = (Dmg(Cn-1) × Pen × (1-AntiPen)) - Armor(Cn)
-          // Pen from ricochetPower, AntiPen from damageDropoff
-          const pen = (projectile.ricochetPower || 0) / 200; // Normalize to 0-1
-          const antiPen = projectile.damageDropoff || 0;
-          damage = damage * pen * (1 - antiPen);
+          // Apply damage multiplier: Math.max(0.25, ddo)
+          const damageMultiplier = Math.max(0.25, projectile.damageDropoff || 0);
+          damage = damage * damageMultiplier;
         }
         
         // Apply armor (flat reduction)
@@ -908,7 +1207,7 @@ export default class BattleScene extends Phaser.Scene {
         
         // Ballistics ignore reflect (wiki: armor only)
         
-        console.log(`Ballistic hit ${module.name}: ${damage.toFixed(1)} dmg (armor: ${module.armor}, penetrated: ${projectile.penetratedModules})`);
+        console.log(`Ballistic hit ${module.name}: ${damage.toFixed(1)} dmg (armor: ${module.armor}, penetrated: ${projectile.penetratedModules}/${maxPenetration})`);
         
         module.takeDamage(damage);
         this.checkShipDestruction(module.ship);
@@ -916,7 +1215,12 @@ export default class BattleScene extends Phaser.Scene {
         // Check if projectile can continue (piercing)
         projectile.penetratedModules++;
         
-        if (projectile.penetratedModules >= maxPenetration || damage < 1) {
+        // Penetration chance: rp/ip
+        const ip = projectile.impactPower || 1;
+        const penetrationChance = Math.min(1, rp / ip); // Cap at 100%
+        const willPenetrate = Math.random() < penetrationChance;
+        
+        if (projectile.penetratedModules >= maxPenetration || !willPenetrate) {
           return true; // Projectile destroyed
         }
         
@@ -934,7 +1238,7 @@ export default class BattleScene extends Phaser.Scene {
     for (const shield of shields) {
       if (shield.isPointInShield(projectile.x, projectile.y)) {
         // Shield blocks missile
-        let damage = projectile.baseDamage;
+        let damage = projectile.baseDamage * this.damageMultiplier;
         damage = damage - shield.armor;
         damage = Math.max(1, damage);
         
@@ -998,7 +1302,7 @@ export default class BattleScene extends Phaser.Scene {
               const dist = Phaser.Math.Distance.Between(projectile.x, projectile.y, closestX, closestY);
               const falloff = 1 - (dist / projectile.explosionRadius);
               const damageFactor = this.debugSettings?.missileDamageFactor || 0.1;
-              let damagePerCell = projectile.baseDamage * projectile.explosionForce * falloff * damageFactor;
+              let damagePerCell = projectile.baseDamage * projectile.explosionForce * falloff * damageFactor * this.damageMultiplier;
               
               // Apply armor (flat reduction)
               damagePerCell = damagePerCell - m.armor;
@@ -1020,7 +1324,7 @@ export default class BattleScene extends Phaser.Scene {
         } else {
           // Direct hit damage (no explosion)
           const damageFactor = this.debugSettings?.missileDamageFactor || 0.1;
-          let damage = projectile.baseDamage * damageFactor;
+          let damage = projectile.baseDamage * damageFactor * this.damageMultiplier;
           damage = damage - module.armor;
           damage = Math.max(1, damage);
           // No reflect for missiles
@@ -1037,15 +1341,23 @@ export default class BattleScene extends Phaser.Scene {
   }
 
   checkShipDestruction(ship) {
+    // Don't check if battle already ended
+    if (this.battleEnded) return;
+    
     const aliveWeapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
     const aliveReactors = ship.modules.filter(m => (m.category & 128) && m.alive);
     
     if (aliveWeapons.length === 0 || aliveReactors.length === 0) {
       ship.destroyed = true;
+      this.battleEnded = true;
       
-      // Show result via alert
       const isPlayer = ship === this.playerShip;
-      alert(isPlayer ? 'DEFEAT - Your ship was destroyed!' : 'VICTORY - Enemy ship destroyed!');
+      const playerWon = !isPlayer;
+      
+      // Call victory callback
+      if (this.props.onVictory) {
+        this.props.onVictory(playerWon);
+      }
     }
   }
 
@@ -1071,7 +1383,7 @@ export default class BattleScene extends Phaser.Scene {
     
     // Add smoke effect on top
     const smoke = this.add.sprite(x, y, 'smoke');
-    smoke.setScale(scale * 0.8);
+    smoke.setScale(scale * 0.5);
     smoke.setDepth(smokeConfig.depth || 11);
     smoke.setAlpha(smokeConfig.alpha || 0.7);
     
@@ -1098,13 +1410,97 @@ export default class BattleScene extends Phaser.Scene {
       junk.y += junk.velocity.y * dt;
       junk.sprite.setPosition(junk.x, junk.y);
       
-      // Slow down over time
-      junk.velocity.x *= 0.99;
-      junk.velocity.y *= 0.99;
+      // Apply rotation
+      if (junk.rotationSpeed) {
+        junk.sprite.rotation += junk.rotationSpeed * dt;
+      }
       
-      // Remove if expired
+      // Apply deceleration
+      if (junk.deceleration) {
+        junk.velocity.x *= junk.deceleration;
+        junk.velocity.y *= junk.deceleration;
+      }
+      
+      // Remove if expired or destroyed
       if (junk.lifetime > junk.maxLifetime || junk.health <= 0) {
+        // Create small explosion if destroyed by damage
+        if (junk.health <= 0) {
+          const explosionScale = this.visualConfig?.explosions?.junk?.scale || 0.03;
+          this.createExplosion(junk.x, junk.y, explosionScale);
+        }
+        // Destroy any laser beams targeting this junk
+        if (junk.laserBeams) {
+          junk.laserBeams.forEach(beam => beam.destroy());
+          junk.laserBeams = [];
+        }
         junk.sprite.destroy();
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // Update mines
+    if (!this.mines) return;
+    
+    this.mines = this.mines.filter(mine => {
+      mine.lifetime += dt;
+      
+      // Move mine
+      mine.x += mine.velocity.x * dt;
+      mine.y += mine.velocity.y * dt;
+      mine.sprite.setPosition(mine.x, mine.y);
+      
+      // Apply rotation
+      if (mine.rotationSpeed) {
+        mine.sprite.rotation += mine.rotationSpeed * dt;
+      }
+      
+      // Apply deceleration
+      if (mine.deceleration) {
+        mine.velocity.x *= mine.deceleration;
+        mine.velocity.y *= mine.deceleration;
+      }
+      
+      // Check collision with enemy modules
+      const enemyShip = mine.owner === this.playerShip ? this.enemyShip : this.playerShip;
+      
+      for (const module of enemyShip.modules) {
+        if (!module.alive || !module.worldPos) continue;
+        
+        const distance = Phaser.Math.Distance.Between(mine.x, mine.y, module.worldPos.x, module.worldPos.y);
+        
+        if (distance < 2) { // Module hit mine (tight collision)
+          // Create explosion
+          this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+          
+          // Damage nearby modules in explosion radius
+          enemyShip.modules.forEach(m => {
+            if (!m.alive || !m.worldPos) return;
+            const modDist = Phaser.Math.Distance.Between(mine.x, mine.y, m.worldPos.x, m.worldPos.y);
+            if (modDist < mine.explosionRadius) {
+              m.takeDamage(mine.damage);
+            }
+          });
+          
+          mine.sprite.destroy();
+          return false;
+        }
+      }
+      
+      // Remove if expired or destroyed
+      if (mine.lifetime > mine.maxLifetime || mine.health <= 0) {
+        // Create explosion if destroyed by damage
+        if (mine.health <= 0) {
+          const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
+          this.createExplosion(mine.x, mine.y, explosionScale);
+        }
+        // Destroy any laser beams targeting this mine
+        if (mine.laserBeams) {
+          mine.laserBeams.forEach(beam => beam.destroy());
+          mine.laserBeams = [];
+        }
+        mine.sprite.destroy();
         return false;
       }
       
@@ -1113,38 +1509,67 @@ export default class BattleScene extends Phaser.Scene {
   }
   
   checkJunkCollision(projectile) {
-    if (!this.junkPieces) return false;
+    // Check junk pieces
+    if (this.junkPieces) {
+      for (let i = 0; i < this.junkPieces.length; i++) {
+        const junk = this.junkPieces[i];
+        const dist = Phaser.Math.Distance.Between(projectile.x, projectile.y, junk.x, junk.y);
+        
+        if (dist < 1) {
+          if (projectile.type === 'ballistic') {
+            // Ballistic damages junk
+            junk.health -= projectile.baseDamage;
+            
+            // Piercing ballistics lose one penetration level
+            if (projectile.ricochetFactor > 0) {
+              projectile.ricochetFactor--;
+            }
+            
+            if (junk.health <= 0) {
+              junk.sprite.destroy();
+              this.junkPieces.splice(i, 1);
+            }
+            
+            return true; // Projectile continues
+          } else if (projectile.type === 'missile') {
+            // Missile destroys junk and is destroyed
+            junk.health -= projectile.baseDamage;
+            if (junk.health <= 0) {
+              junk.sprite.destroy();
+              this.junkPieces.splice(i, 1);
+            }
+            return true; // Missile destroyed
+          }
+        }
+      }
+    }
     
-    for (let i = 0; i < this.junkPieces.length; i++) {
-      const junk = this.junkPieces[i];
-      const dist = Phaser.Math.Distance.Between(projectile.x, projectile.y, junk.x, junk.y);
-      
-      if (dist < 1) {
-        if (projectile.type === 'ballistic') {
-          // Ballistic damages junk
-          junk.health -= projectile.baseDamage;
-          
-          // Piercing ballistics lose one penetration level
-          if (projectile.ricochetFactor > 0) {
-            projectile.ricochetFactor--;
+    // Check mines
+    if (this.mines) {
+      for (let i = 0; i < this.mines.length; i++) {
+        const mine = this.mines[i];
+        const dist = Phaser.Math.Distance.Between(projectile.x, projectile.y, mine.x, mine.y);
+        
+        if (dist < 1) {
+          if (projectile.type === 'ballistic') {
+            // Ballistic damages mine
+            mine.health -= projectile.baseDamage;
+            
+            if (mine.health <= 0) {
+              // Mine explodes
+              this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+              mine.sprite.destroy();
+              this.mines.splice(i, 1);
+            }
+            
+            return true; // Projectile continues
+          } else if (projectile.type === 'missile') {
+            // Missile triggers mine explosion
+            this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+            mine.sprite.destroy();
+            this.mines.splice(i, 1);
+            return true; // Missile destroyed
           }
-          
-          if (junk.health <= 0) {
-            junk.sprite.destroy();
-            this.junkPieces.splice(i, 1);
-          }
-          
-          console.log(`Junk hit by ballistic: ${junk.health}/15 HP`);
-          return true; // Projectile continues (unless junk absorbed it)
-        } else if (projectile.type === 'missile') {
-          // Missile destroys junk and is destroyed
-          junk.health -= projectile.baseDamage;
-          if (junk.health <= 0) {
-            junk.sprite.destroy();
-            this.junkPieces.splice(i, 1);
-          }
-          console.log(`Junk destroyed missile`);
-          return true; // Missile destroyed
         }
       }
     }
@@ -1182,11 +1607,40 @@ export default class BattleScene extends Phaser.Scene {
     cam.scrollX = centerX - cam.width / 2;
     cam.scrollY = centerY - cam.height / 2;
     
-    // Debug logging every 1 second
-    if (!this.lastLogTime) this.lastLogTime = 0;
-    if (this.time.now - this.lastLogTime > 1000) {
-      const actualCenterX = cam.scrollX + cam.width / 2 / cam.zoom;
-      this.lastLogTime = this.time.now;
+    // Update starfield parallax with tiling
+    if (this.starLayers) {
+      // Store initial camera state if not set
+      if (!this.initialCameraState) {
+        this.initialCameraState = { 
+          x: centerX, 
+          y: centerY
+        };
+      }
+      
+      // Calculate camera movement from initial position
+      const cameraDeltaX = centerX - this.initialCameraState.x;
+      const cameraDeltaY = centerY - this.initialCameraState.y;
+      
+      this.starLayers.forEach(layer => {
+        // Position at world center (scrollFactor=1 means it follows camera)
+        layer.tileSprite.setPosition(centerX, centerY);
+        
+        // Scale inversely to camera zoom to keep visual size constant
+        const inverseZoom = 1 / cam.zoom;
+        layer.tileSprite.setScale(inverseZoom);
+        
+        // Update tile position for parallax effect
+        layer.tileSprite.tilePositionX = cameraDeltaX * layer.parallaxFactor;
+        layer.tileSprite.tilePositionY = cameraDeltaY * layer.parallaxFactor;
+      });
+    }
+  }
+  
+  shutdown() {
+    // Destroy lil-gui when scene is shut down
+    if (this.gui) {
+      this.gui.destroy();
+      this.gui = null;
     }
   }
 }

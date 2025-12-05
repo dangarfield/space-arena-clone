@@ -22,7 +22,8 @@ const loadGameState = () => {
       currentLevel: 0,
       completedLevels: []
     },
-    hangars: [null, null, null, null, null]
+    hangars: [null, null, null, null, null],
+    activeHangar: 0
   };
 };
 
@@ -34,10 +35,18 @@ const saveGameState = (state) => {
 export default function App() {
   const [gameState, setGameState] = createSignal(loadGameState());
   const [currentScene, setCurrentScene] = createSignal('hangar');
-  const [activeHangar, setActiveHangar] = createSignal(0);
+  const [activeHangar, setActiveHangar] = createSignal(gameState().activeHangar ?? 0);
   const [shipConfiguration, setShipConfiguration] = createSignal(null);
   
   const hangars = () => gameState().hangars;
+  
+  // Save active hangar when it changes
+  const handleActiveHangarChange = (index) => {
+    setActiveHangar(index);
+    const newState = { ...gameState(), activeHangar: index };
+    setGameState(newState);
+    saveGameState(newState);
+  };
 
   const handleSelectShip = (hangarIndex) => {
     setActiveHangar(hangarIndex);
@@ -98,7 +107,7 @@ export default function App() {
         <HangarHub 
           hangars={hangars()}
           initialActiveHangar={activeHangar()}
-          onActiveHangarChange={setActiveHangar}
+          onActiveHangarChange={handleActiveHangarChange}
           onSelectShip={handleSelectShip}
           onClearHangar={handleClearHangar}
           onGoToFitting={handleGoToFitting}

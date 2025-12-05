@@ -39,8 +39,11 @@ export default class ShieldModule extends BaseModule {
     
     this.shieldGraphics.clear();
     
-    // Hide shield visual when depleted
-    if (this.currentShield <= 0) {
+    // Check debug setting first
+    const showShields = this.scene.debugSettings?.showShields !== false;
+    
+    // Hide shield visual when depleted or debug disabled
+    if (this.currentShield <= 0 || !showShields) {
       this.shieldGraphics.setVisible(false);
       return;
     }

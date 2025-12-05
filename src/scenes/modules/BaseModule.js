@@ -66,7 +66,8 @@ export default class BaseModule {
     this.sprite.setRotation(0);
     
     // Health indicator cell (underneath sprite)
-    this.healthCell = this.scene.add.rectangle(x, y, width, height, 0x00ff00);
+    // Create at 0,0 - will be positioned by updateLocalPosition after being added to container
+    this.healthCell = this.scene.add.rectangle(0, 0, width, height, 0x00ff00);
     this.healthCell.setOrigin(0.5);
     this.healthCell.setDepth(0); // Behind sprite
     
@@ -157,9 +158,10 @@ export default class BaseModule {
     const explosionDamage = parseFloat(this.data.ed || 0);
     
     if (explosionRadius > 0 && explosionDamage > 0) {
-      console.log(`Reactor explosion! radius=${explosionRadius}, damage=${explosionDamage}`);
+      console.log(`Reactor ${this.name} explosion! radius=${explosionRadius} cells, damage=${explosionDamage}`);
       
-      // Visual explosion effect
+      // Visual explosion effect (scale by cell radius)
+      const visualRadius = explosionRadius * 1.5; // Scale for visibility
       const explosion = this.scene.add.circle(
         this.worldPos.x,
         this.worldPos.y,
@@ -172,33 +174,61 @@ export default class BaseModule {
       // Animate explosion
       this.scene.tweens.add({
         targets: explosion,
-        radius: explosionRadius,
+        radius: visualRadius,
         alpha: 0,
         duration: 500,
         onComplete: () => explosion.destroy()
       });
       
-      // Damage nearby modules on both ships
-      const allShips = [this.ship, this.ship.enemy].filter(s => s);
+      // Get all cells occupied by this reactor
+      const reactorCells = [];
+      for (let r = 0; r < this.size.h; r++) {
+        for (let c = 0; c < this.size.w; c++) {
+          reactorCells.push({ col: this.col + c, row: this.row + r });
+        }
+      }
       
-      allShips.forEach(ship => {
-        ship.modules.forEach(module => {
-          if (!module.alive || !module.worldPos) return;
-          
-          const dist = Phaser.Math.Distance.Between(
-            this.worldPos.x, this.worldPos.y,
-            module.worldPos.x, module.worldPos.y
-          );
-          
-          if (dist <= explosionRadius) {
-            // Damage falls off with distance
-            const damageFactor = 1 - (dist / explosionRadius);
-            const damage = explosionDamage * damageFactor;
+      // Damage modules on same ship based on grid distance (Manhattan distance)
+      // Only horizontal/vertical, not diagonal
+      this.ship.modules.forEach(module => {
+        if (!module.alive || module === this) return;
+        
+        // Find minimum Manhattan distance from any reactor cell to any module cell
+        let minDistance = Infinity;
+        
+        for (let r = 0; r < module.size.h; r++) {
+          for (let c = 0; c < module.size.w; c++) {
+            const moduleCell = { col: module.col + c, row: module.row + r };
             
-            console.log(`  Explosion hit ${module.name} at ${dist.toFixed(1)} units: ${damage.toFixed(1)} damage`);
-            module.takeDamage(damage);
+            // Check distance to each reactor cell
+            reactorCells.forEach(reactorCell => {
+              const horizontalDist = Math.abs(moduleCell.col - reactorCell.col);
+              const verticalDist = Math.abs(moduleCell.row - reactorCell.row);
+              
+              // Manhattan distance (only horizontal OR vertical, not both)
+              // A cell is adjacent if it's directly horizontal or vertical, not diagonal
+              let cellDistance;
+              if (horizontalDist === 0) {
+                // Same column, use vertical distance
+                cellDistance = verticalDist;
+              } else if (verticalDist === 0) {
+                // Same row, use horizontal distance
+                cellDistance = horizontalDist;
+              } else {
+                // Diagonal - use the sum (Manhattan distance)
+                cellDistance = horizontalDist + verticalDist;
+              }
+              
+              minDistance = Math.min(minDistance, cellDistance);
+            });
           }
-        });
+        }
+        
+        // Apply damage if within explosion radius
+        if (minDistance <= explosionRadius) {
+          console.log(`  Reactor explosion hit ${module.name} at ${minDistance} cells: ${explosionDamage} damage`);
+          module.takeDamage(explosionDamage);
+        }
       });
     }
   }

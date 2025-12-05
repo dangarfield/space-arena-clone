@@ -1,6 +1,8 @@
 # Agent Context - Space Arena Clone
 
-This document provides technical context for AI agents working on this project.
+**Purpose:** Technical reference for AI agents working on this codebase. Contains implementation details, file structure, code patterns, and current status.
+
+**For gameplay mechanics and formulas, see BATTLE.md**
 
 ## Tech Stack
 
@@ -224,29 +226,134 @@ pnpm run convert   # Markdown → src/data/*.json
 
 **Note**: Ship shape arrays are manually created, not scraped from wiki.
 
+## Battle System Implementation
+
+### BattleScene.js (Phaser 3)
+
+**Core Systems:**
+- Mass-based physics: `acceleration = thrust / totalMass`
+- Damage ramping: 2%/sec increase after 30s
+- Three weapon types: Ballistic, Laser, Missile
+- Point defense interceptors
+- Visual effects: Smoke trails, explosions, particles
+
+**Key Methods:**
+- `createBattleShip(config, pos, rotation)`: Instantiates ship with modules
+- `updateShip(ship, enemy, dt)`: AI movement and weapon firing
+- `updateProjectiles(dt)`: Ballistic/missile physics
+- `updateLaserBeams()`: Continuous beam damage
+- `checkCollision(projectile, ship)`: Hit detection
+- `createExplosion(x, y, scale)`: Sprite-based explosion effect
+
+**Visual Config:**
+- All effects in `src/config/visual-effects.json`
+- Per-module projectile sprites (e.g., `Ballistic1x1`, `RocketLauncher1x2`)
+- Particle systems: missile trails, explosions, smoke
+- Pellet counts: Defined per weapon in visual-effects.json
+- Background layers: Parallax starfield with tint/alpha support
+
+### Module Classes
+
+**BaseModule.js:**
+- `takeDamage(amount)`: Applies damage, updates health
+- `onDestroy()`: Creates explosion/smoke effects, triggers reactor explosion if module is reactor
+- `checkReactorExplosion()`: Grid-based damage to adjacent modules using Manhattan distance
+  - Uses `er` (explosion radius in cells) and `ed` (explosion damage)
+  - Only affects horizontal/vertical cells, not diagonal
+  - Example: 2x2 reactor with er=2, ed=50 damages all modules within 2 cells (50 damage each)
+- Health-based tinting: Green → Orange → Red → Black
+
+**WeaponModule.js:**
+- `fireBallistic()`: Creates projectile with sprite from config, supports pellets
+- `fireLaser()`: Raycast beam with tick-based damage
+- `fireMissile()`: Tracking projectile with acceleration and smoke trail
+- `findTargetInCone()`: Targets closest entity (modules, junk, or mines)
+
+**EngineModule.js:**
+- `getThrustContribution()`: Returns `ep` if alive
+- `getTurnContribution()`: Returns `ts` if alive
+
+**AfterburnerModule.js:**
+- `update(dt)`: Updates active/cooldown timers
+- `activate()`: Applies speed/thrust multipliers to ship
+- `deactivate()`: Removes multipliers, starts cooldown
+- AI activates when distance > 300 or health < 30%
+
+**RepairBayModule.js:**
+- `update(dt)`: Checks for damaged modules every 0.5s
+- `performRepair()`: Heals most damaged module
+- Hardcoded: 2500 HP capacity per bay, 9 HP/s repair speed
+- Max 3 repair bays active simultaneously
+- Prioritizes modules with lowest health percentage
+
+**PointDefenseModule.js:**
+- `update(dt)`: Scans for missiles, mines, and junk in range
+- `fireInterceptor(target)`: Creates PD projectile
+- Priority: missiles → mines → junk
+
+**JunkLauncherModule.js:**
+- `fire()`: Launches debris with spread and staggered timing
+- Junk has 15 HP, blocks enemy weapons
+- Uses module `ss` field for spread, `mc` for count
+
+**MineLauncherModule.js:**
+- `fire()`: Deploys mines in 360° spread with staggered timing
+- Mines explode on proximity to enemy modules (2 unit radius)
+- Uses module `mc` for count, `mer`/`mef` for explosion
+
+### Ship Hydration
+
+**shipHydration.js:**
+- Converts minimal config `{shipId, modules: [{moduleId, col, row}]}` to full config
+- Loads ship data, module data, localization
+- Attaches `module.key` for visual config lookup
+- Returns `{ship, modules}` with all data populated
+
 ## Current Implementation Status
 
 **Working:**
-- Main menu, level select, ship select screens
-- Module inventory with filtering by category/subcategory
-- Click-to-select module placement system
-- Hover preview with validation (green/red)
-- Resource tracking (power, cells, mass, armor)
-- Cell type validation (D vs E cells)
-- Dynamic grid scaling
+- UI: Main menu, level select, ship select, fitting scene
+- Fitting: Click-to-place, validation, resource tracking
+- Battle: Mass-based movement, all weapon types, damage ramping
+- Shields: Damage absorption, regeneration, laser bypass
+- Warp drive: Teleport mechanics with cooldown
+- Effects: Projectile sprites, smoke trails, explosions
+- Point defense: Missile interception
+- Debug GUI: lil-gui with all parameters
 
-**TODO:**
-- Module rotation
-- Save/load ship configurations
-- Battle simulation
-- Module destruction and effects
+**Implemented:**
+- Junk Launcher: Fires debris that blocks weapons (15 HP each), uses `ss` for spread
+- Mine Launcher: Deploys proximity mines (explode within 2 units of enemy modules)
+- Point Defense: Intercepts missiles, mines, and junk (priority order)
+- Weapon targeting: Targets closest entity (modules, junk, or mines) in firing cone
+- Pellet system: Shotguns fire 5-8 pellets, junk fires multiple pieces (staggered timing)
+- Explosions: Configurable sizes (module=0.05, mine=0.08, junk=0.03)
+- Starfield parallax: 2-layer background with 9 image variants
+- Active hangar persistence: Saves to localStorage
+- Module filtering: Uses category bit flags (`c` field)
+- Afterburner boost: Speed/thrust multipliers with cooldown, AI activates when distance > 300 or health < 30%
+- Reactor explosions: Grid-based damage to adjacent modules (Manhattan distance, uses `er` and `ed` fields)
+  - Only horizontal/vertical cells affected, not diagonal
+  - Full damage to all modules in radius, no falloff
+- Victory screen: HTML overlay with continue button, ships slow down after battle ends (95% friction)
+- Repair bay healing: Heals damaged modules (2500 HP capacity per bay, 9 HP/s, max 3 active)
+- Laser targeting: Retargets when current target (module/junk/mine) is destroyed
+
+**Not Implemented:**
 - Campaign progression
-- Module unlocks
+- Module unlocks by level
 
 ## Debugging Tips
 
+**UI Issues:**
 - Check browser console for errors
-- Use SolidJS DevTools for reactive state inspection
-- Grid positioning issues: check `cellSize` calculation
-- Placement validation: add console.logs in `canPlace()`
-- Module not appearing: check if `stats.Size` is parsed correctly
+- Use SolidJS DevTools for reactive state
+- Grid positioning: verify `cellSize` calculation
+- Module placement: add logs in `canPlace()`
+
+**Battle Issues:**
+- Use lil-gui to adjust parameters in real-time
+- Check `this.damageMultiplier` for ramping
+- Verify `module.key` matches visual-effects.json keys
+- Projectile not appearing: check sprite path in config
+- Mass issues: log `totalMass` in movement calculation

@@ -4,7 +4,8 @@
       "default": {
         "sprite": "/images/effects/ballistic-01.png",
         "scale": 0.015,
-        "rotationOffset": 1.5708
+        "rotationOffset": 1.5708,
+        "pellets": 1
       },
       "Ballistic1x1": {
         "sprite": "/images/effects/ballistic-01.png",
@@ -89,12 +90,14 @@
       "Shotgun2x3": {
         "sprite": "/images/effects/ballistic-01.png",
         "scale": 0.01,
-        "rotationOffset": 1.5708
+        "rotationOffset": 1.5708,
+        "pellets": 5
       },
       "Shotgun3x4": {
         "sprite": "/images/effects/ballistic-01.png",
         "scale": 0.01,
-        "rotationOffset": 1.5708
+        "rotationOffset": 1.5708,
+        "pellets": 8
       },
       "PiercingBallistic1x4": {
         "sprite": "/images/effects/ballistic-04.png",
@@ -278,17 +281,17 @@
     },
     "mine": {
       "default": {
-        "sprite": "/images/effects/missile-01.png",
+        "sprite": "/images/effects/mine-01.png",
         "scale": 0.008,
         "rotationOffset": 0
       },
       "MineLauncher3x2": {
-        "sprite": "/images/effects/missile-01.png",
+        "sprite": "/images/effects/mine-01.png",
         "scale": 0.008,
         "rotationOffset": 0
       },
       "MineLauncher3x2_2": {
-        "sprite": "/images/effects/missile-01.png",
+        "sprite": "/images/effects/mine-01.png",
         "scale": 0.008,
         "rotationOffset": 0
       }
@@ -304,7 +307,9 @@
     "junk": {
       "color": "0x888888",
       "size": 0.5,
-      "alpha": 0.6
+      "alpha": 0.6,
+      "pellets": 8,
+      "spread": 30
     }
   },
   "explosions": {
@@ -316,6 +321,12 @@
     },
     "module": {
       "scale": 0.1
+    },
+    "mine": {
+      "scale": 0.05
+    },
+    "junk": {
+      "scale": 0.03
     }
   },
   "effects": {
@@ -360,6 +371,18 @@
       "frameRate": 20,
       "alpha": 0.7,
       "depth": 11
+    },
+    "repair": {
+      "sprite": "/images/effects/repair-01.png",
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "frames": 4,
+      "frameRate": 8,
+      "scale": 0.05,
+      "alpha": 0.8,
+      "tint": "0x00ff00",
+      "depth": 15,
+      "duration": 500
     }
   },
   "modules": {
@@ -383,5 +406,54 @@
       "fillColor": "0xff4444",
       "fillAlpha": 0.1
     }
+  },
+  "starfield": {
+    "backgroundImages": [
+      "/images/effects/bg-blue-01.png",
+      "/images/effects/bg-blue-02.png",
+      "/images/effects/bg-blue-03.png",
+      "/images/effects/bg-green-01.png",
+      "/images/effects/bg-green-02.png",
+      "/images/effects/bg-green-03.png",
+      "/images/effects/bg-purple-01.png",
+      "/images/effects/bg-purple-02.png",
+      "/images/effects/bg-purple-03.png"
+    ],
+    "layers": [
+      {
+        "show": true,
+        "tileScale": 2.2,
+        "parallax": 1,
+        "depth": -100,
+        "useBackgroundImage": true,
+        "alpha": 0.5
+      },
+      {
+        "show": true,
+        "count": 20,
+        "tileSize": 256,
+        "sizeMin": 0.5,
+        "sizeMax": 1.5,
+        "alphaMin": 0.3,
+        "alphaMax": 0.6,
+        "parallax": 1,
+        "depth": -90,
+        "color": "0xffffff",
+        "useBackgroundImage": false
+      },
+      {
+        "show": true,
+        "count": 10,
+        "tileSize": 256,
+        "sizeMin": 0.5,
+        "sizeMax": 1.5,
+        "alphaMin": 0.3,
+        "alphaMax": 0.6,
+        "parallax": 2,
+        "depth": -80,
+        "color": "0xffffff",
+        "useBackgroundImage": false
+      }
+    ]
   }
 }

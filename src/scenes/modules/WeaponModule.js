@@ -97,6 +97,73 @@ export default class WeaponModule extends BaseModule {
     return this.alive && this.cooldownTimer <= 0;
   }
   
+  findTargetInCone(targetShip) {
+    // Safety check - weapon must have worldPos
+    if (!this.worldPos) {
+      console.warn(`${this.name} has no worldPos yet`);
+      return null;
+    }
+    
+    const weaponAngle = this.ship.rotation;
+    const coneHalfAngle = (this.fireCone / 2) * (Math.PI / 180);
+    
+    let closestTarget = null;
+    let closestDistance = Infinity;
+    
+    // Helper function to check if target is in cone and range
+    const checkTarget = (target, x, y) => {
+      const distance = Phaser.Math.Distance.Between(
+        this.worldPos.x, this.worldPos.y,
+        x, y
+      );
+      
+      if (distance > this.range) return;
+      
+      const angleToTarget = Phaser.Math.Angle.Between(
+        this.worldPos.x, this.worldPos.y,
+        x, y
+      );
+      
+      const angleDiff = Phaser.Math.Angle.Wrap(angleToTarget - weaponAngle);
+      
+      if (Math.abs(angleDiff) <= coneHalfAngle && distance < closestDistance) {
+        closestTarget = target;
+        closestDistance = distance;
+      }
+    };
+    
+    // Check enemy modules
+    const enemyModules = targetShip.modules.filter(m => m.alive && m.worldPos);
+    for (const module of enemyModules) {
+      checkTarget(module, module.worldPos.x, module.worldPos.y);
+    }
+    
+    // Check enemy junk pieces
+    if (this.scene.junkPieces) {
+      for (const junk of this.scene.junkPieces) {
+        if (junk.owner !== this.ship) { // Only target enemy junk
+          checkTarget(junk, junk.x, junk.y);
+        }
+      }
+    }
+    
+    // Check enemy mines
+    if (this.scene.mines) {
+      for (const mine of this.scene.mines) {
+        if (mine.owner !== this.ship) { // Only target enemy mines
+          checkTarget(mine, mine.x, mine.y);
+        }
+      }
+    }
+    
+    if (this.isLaser && closestTarget) {
+      const targetName = closestTarget.name || closestTarget.type || 'unknown';
+      console.log(`${this.name} found target ${targetName} at distance ${closestDistance.toFixed(1)} (range: ${this.range})`);
+    }
+    
+    return closestTarget;
+  }
+  
   fire(targetShip) {
     if (!this.canFire()) return false;
     
@@ -114,9 +181,18 @@ export default class WeaponModule extends BaseModule {
   }
   
   fireBallistic(targetShip) {
-    const angle = this.ship.rotation;
-    const spreadRad = this.shotSpread * (Math.PI / 180);
-    const finalAngle = angle + (Math.random() - 0.5) * spreadRad;
+    const target = this.findTargetInCone(targetShip);
+    if (!target) return false;
+    
+    // Get target position (modules use worldPos, junk/mines use x/y)
+    const targetX = target.worldPos ? target.worldPos.x : target.x;
+    const targetY = target.worldPos ? target.worldPos.y : target.y;
+    
+    // Aim at target
+    const angleToTarget = Phaser.Math.Angle.Between(
+      this.worldPos.x, this.worldPos.y,
+      targetX, targetY
+    );
     
     const speed = this.scene.debugSettings?.ballisticSpeed || 400;
     
@@ -126,60 +202,141 @@ export default class WeaponModule extends BaseModule {
     const ballisticConfig = ballisticConfigs[moduleKey] || ballisticConfigs.default || {
       sprite: '/images/effects/ballistic-01.png',
       scale: 0.015,
-      rotationOffset: 1.5708
+      rotationOffset: 1.5708,
+      pellets: 1
     };
     
-    const projectile = {
-      type: 'ballistic',
-      x: this.worldPos.x,
-      y: this.worldPos.y,
-      rotation: finalAngle,
-      velocity: {
-        x: Math.cos(finalAngle) * speed,
-        y: Math.sin(finalAngle) * speed
-      },
-      baseDamage: this.damage,
-      impactPower: this.impactPower,
-      impactForceMultiplier: this.impactForceMultiplier,
-      ricochetPower: this.ricochetPower,
-      ricochetFactor: this.ricochetFactor,
-      damageDropoff: this.damageDropoff,
-      travelDistance: 0,
-      weapon: this,
-      owner: this.ship,
-      sprite: null
-    };
+    const pelletCount = ballisticConfig.pellets || 1;
+    const spreadRad = this.shotSpread * (Math.PI / 180);
     
-    // Create sprite from config
-    const spriteKey = ballisticConfig.sprite.split('/').pop().replace('.png', '');
-    projectile.sprite = this.scene.add.image(this.worldPos.x, this.worldPos.y, spriteKey);
-    projectile.sprite.setRotation(finalAngle + ballisticConfig.rotationOffset);
-    projectile.sprite.setScale(ballisticConfig.scale);
-    projectile.sprite.setDepth(5);
+    // Fire multiple pellets with staggered timing (spread over 100ms)
+    for (let i = 0; i < pelletCount; i++) {
+      const delay = Math.random() * 100; // Random delay 0-100ms
+      
+      this.scene.time.delayedCall(delay, () => {
+        if (!this.alive) return; // Don't fire if weapon destroyed
+        
+        const finalAngle = angleToTarget + (Math.random() - 0.5) * spreadRad;
+        
+        const projectile = {
+          type: 'ballistic',
+          x: this.worldPos.x,
+          y: this.worldPos.y,
+          rotation: finalAngle,
+          velocity: {
+            x: Math.cos(finalAngle) * speed,
+            y: Math.sin(finalAngle) * speed
+          },
+          baseDamage: this.damage / pelletCount, // Divide damage among pellets
+          impactPower: this.impactPower,
+          impactForceMultiplier: this.impactForceMultiplier,
+          ricochetPower: this.ricochetPower,
+          ricochetFactor: this.ricochetFactor,
+          damageDropoff: this.damageDropoff,
+          travelDistance: 0,
+          weapon: this,
+          owner: this.ship,
+          sprite: null
+        };
+        
+        // Create sprite from config
+        const spriteKey = ballisticConfig.sprite.split('/').pop().replace('.png', '');
+        projectile.sprite = this.scene.add.image(this.worldPos.x, this.worldPos.y, spriteKey);
+        projectile.sprite.setRotation(finalAngle + ballisticConfig.rotationOffset);
+        projectile.sprite.setScale(ballisticConfig.scale);
+        projectile.sprite.setDepth(5);
+        
+        this.scene.projectiles.push(projectile);
+      });
+    }
     
-    this.scene.projectiles.push(projectile);
-    console.log('Fired ballistic!');
     return true;
   }
   
   fireLaser(targetShip) {
-    const angle = this.ship.rotation;
+    const closestTarget = this.findTargetInCone(targetShip);
+    
+    if (!closestTarget) {
+      console.log(`fireLaser ${this.name}: No target in cone`);
+      return false;
+    }
+    
+    // Get target position (modules use worldPos, junk/mines use x/y directly)
+    const targetPos = closestTarget.worldPos || { x: closestTarget.x, y: closestTarget.y };
+    const targetName = closestTarget.name || closestTarget.type || 'unknown';
+    
+    // Aim at the closest target
+    const angle = Phaser.Math.Angle.Between(
+      this.worldPos.x, this.worldPos.y,
+      targetPos.x, targetPos.y
+    );
     const endX = this.worldPos.x + Math.cos(angle) * this.range;
     const endY = this.worldPos.y + Math.sin(angle) * this.range;
     
-    // Raycast to find hit (instant hit detection)
+    console.log(`fireLaser ${this.name}: aiming at ${targetName} at angle=${(angle * 180 / Math.PI).toFixed(1)}°`);
+    
+    // If targeting junk/mine, damage it directly (lasers are instant hit)
+    if (closestTarget.type === 'junk' || closestTarget.type === 'mine') {
+      const damageMultiplier = this.scene.damageMultiplier || 1.0;
+      const totalDamage = this.damage * this.laserDuration * damageMultiplier;
+      
+      // Apply damage after a short delay so beam is visible
+      this.scene.time.delayedCall(50, () => {
+        closestTarget.health -= totalDamage;
+      });
+      
+      // Visual beam to junk/mine
+      const moduleKey = this.config.module.key || 'default';
+      const laserConfigs = this.scene.visualConfig?.projectiles?.laser || {};
+      const laserConfig = laserConfigs[moduleKey] || laserConfigs.default || {
+        color: '0xff0000',
+        width: 0.1,
+        alpha: 0.8
+      };
+      const beamColor = parseInt(laserConfig.color);
+      const beamWidth = this.scene.debugSettings?.laserBeamWidth || laserConfig.width;
+      const beam = this.scene.add.line(0, 0, this.worldPos.x, this.worldPos.y, targetPos.x, targetPos.y, beamColor);
+      beam.setLineWidth(beamWidth);
+      beam.setAlpha(laserConfig.alpha);
+      beam.setOrigin(0);
+      beam.setDepth(10);
+      
+      // Store beam reference on target so it can be destroyed when target dies
+      if (!closestTarget.laserBeams) {
+        closestTarget.laserBeams = [];
+      }
+      closestTarget.laserBeams.push(beam);
+      
+      // Destroy beam after duration
+      this.scene.time.delayedCall(this.laserDuration * 1000, () => {
+        beam.destroy();
+        // Remove from target's beam list
+        if (closestTarget.laserBeams) {
+          const index = closestTarget.laserBeams.indexOf(beam);
+          if (index > -1) closestTarget.laserBeams.splice(index, 1);
+        }
+      });
+      
+      return true;
+    }
+    
+    // Raycast to find hit module (for ship modules only)
     let hitModule = this.scene.raycastToModules(this.worldPos, { x: endX, y: endY }, targetShip);
+    
+    console.log(`  Raycast hit: ${hitModule ? hitModule.name : 'NONE'}`);
     
     if (hitModule) {
       // Laser damage = DPS * Duration
       // Apply damage in ticks (60fps)
       const ticksPerSecond = 60;
       const totalTicks = this.laserDuration * ticksPerSecond;
-      const totalDamage = this.damage * this.laserDuration;
+      const damageMultiplier = this.scene.damageMultiplier || 1.0;
+      const totalDamage = this.damage * this.laserDuration * damageMultiplier;
       const damagePerTick = totalDamage / totalTicks;
       
       // Apply damage over duration with armor/reflect per tick
       let currentTick = 0;
+      let currentTarget = hitModule;
       const damageInterval = this.scene.time.addEvent({
         delay: 1000 / ticksPerSecond,
         repeat: totalTicks - 1,
@@ -190,16 +347,66 @@ export default class WeaponModule extends BaseModule {
             return;
           }
           
-          if (hitModule && hitModule.alive) {
-            // Lasers ignore armor, only affected by reflect (wiki)
-            let tickDamage = damagePerTick * (1 - hitModule.reflect);
-            tickDamage = Math.max(1, tickDamage);
+          if (currentTarget && (currentTarget.alive || currentTarget.health > 0)) {
+            // Get target position (modules use worldPos, junk/mines use x/y)
+            const targetPos = currentTarget.worldPos || { x: currentTarget.x, y: currentTarget.y };
             
-            hitModule.takeDamage(tickDamage);
+            // Check if target is still in range and cone
+            const distance = Phaser.Math.Distance.Between(
+              this.worldPos.x, this.worldPos.y,
+              targetPos.x, targetPos.y
+            );
             
-            // If module destroyed, find next module in line
-            if (!hitModule.alive) {
-              hitModule = this.scene.raycastToModules(this.worldPos, { x: endX, y: endY }, targetShip);
+            const angleToTarget = Phaser.Math.Angle.Between(
+              this.worldPos.x, this.worldPos.y,
+              targetPos.x, targetPos.y
+            );
+            
+            const weaponAngle = this.ship.rotation;
+            const coneHalfAngle = (this.fireCone / 2) * (Math.PI / 180);
+            const angleDiff = Phaser.Math.Angle.Wrap(angleToTarget - weaponAngle);
+            const inCone = Math.abs(angleDiff) <= coneHalfAngle;
+            
+            // If target out of range or cone, retarget
+            if (distance > this.range || !inCone) {
+              console.log(`Laser ${this.name}: target out of range/cone, retargeting`);
+              currentTarget = this.findTargetInCone(targetShip);
+              if (beamData) {
+                beamData.targetModule = currentTarget;
+              }
+              // If no new target, skip this tick
+              if (!currentTarget) return;
+            }
+            
+            // Handle damage based on target type
+            if (currentTarget.type === 'junk' || currentTarget.type === 'mine') {
+              // Junk/mines don't have reflect, just apply damage directly
+              let tickDamage = damagePerTick;
+              tickDamage = Math.max(1, tickDamage);
+              currentTarget.health -= tickDamage;
+              
+              // If destroyed, retarget
+              if (currentTarget.health <= 0) {
+                currentTarget = this.findTargetInCone(targetShip);
+                if (beamData) {
+                  beamData.targetModule = currentTarget;
+                }
+              }
+            } else {
+              // Module target - lasers ignore armor, only affected by reflect (wiki)
+              let tickDamage = damagePerTick * (1 - currentTarget.reflect);
+              tickDamage = Math.max(1, tickDamage);
+              
+              currentTarget.takeDamage(tickDamage);
+              
+              // If module destroyed, retarget to next module in cone
+              if (!currentTarget.alive) {
+                currentTarget = this.findTargetInCone(targetShip);
+                // Update beam data reference for visual update
+                if (beamData) {
+                  beamData.targetModule = currentTarget;
+                }
+              }
             }
           }
           
@@ -256,14 +463,13 @@ export default class WeaponModule extends BaseModule {
   }
   
   fireMissile(targetShip) {
-    const aliveModules = targetShip.modules.filter(m => m.alive);
-    if (aliveModules.length === 0) return false;
-    
     const speed = this.scene.debugSettings?.missileSpeed || this.missileSpeed;
     
     // Fire multiple missiles if missileCount > 1
     for (let i = 0; i < this.missileCount; i++) {
-      const target = aliveModules[Math.floor(Math.random() * aliveModules.length)];
+      // Each missile picks a random target in cone
+      const target = this.findTargetInCone(targetShip);
+      if (!target) continue; // Skip this missile if no target
       
       // Launch at angle offset for arced trajectory
       const angleOffset = (this.scene.debugSettings?.missileLaunchAngle || 30) * (Math.PI / 180);

@@ -6,6 +6,7 @@ import WarpModule from './WarpModule.js';
 import PointDefenseModule from './PointDefenseModule.js';
 import RepairBayModule from './RepairBayModule.js';
 import JunkLauncherModule from './JunkLauncherModule.js';
+import MineLauncherModule from './MineLauncherModule.js';
 import ArmorGeneratorModule from './ArmorGeneratorModule.js';
 import AfterburnerModule from './AfterburnerModule.js';
 
@@ -19,6 +20,10 @@ export default class ModuleFactory {
     
     // Check if it's a weapon (has any weapon flag)
     if ((category & 1) || (category & 2) || (category & 4)) {
+      // Check if it's a mine launcher (missile category but launches mines)
+      if (name.includes('mine')) {
+        return new MineLauncherModule(config, ship, scene);
+      }
       return new WeaponModule(config, ship, scene);
     }
     

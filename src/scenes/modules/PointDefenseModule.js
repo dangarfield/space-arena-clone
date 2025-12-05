@@ -38,7 +38,10 @@ export default class PointDefenseModule extends BaseModule {
     
     this.pdGraphics.clear();
     
-    if (!this.alive) {
+    // Check debug setting first
+    const showShields = this.scene.debugSettings?.showShields !== false;
+    
+    if (!this.alive || !showShields) {
       this.pdGraphics.setVisible(false);
       return;
     }
@@ -65,10 +68,83 @@ export default class PointDefenseModule extends BaseModule {
       this.cooldown -= dt;
     }
     
+    // Try to target junk and mines
+    if (this.canFire() && this.worldPos) {
+      this.scanForJunkAndMines();
+    }
+    
     // Update visuals if position changed
     if (this.localPos && this.pdGraphics) {
       this.updateVisuals(this.localPos.x, this.localPos.y);
     }
+  }
+  
+  scanForJunkAndMines() {
+    // Priority: missiles (handled in tryIntercept), then mines, then junk
+    
+    // Check for enemy mines first
+    if (this.scene.mines) {
+      for (const mine of this.scene.mines) {
+        if (mine.owner === this.ship) continue; // Don't target own mines
+        
+        const dist = Phaser.Math.Distance.Between(
+          this.worldPos.x, this.worldPos.y,
+          mine.x, mine.y
+        );
+        
+        if (dist <= this.pdRange) {
+          // Fire at mine
+          this.fireAtJunkOrMine(mine, 'mine');
+          this.cooldown = 1 / this.pdFireRate;
+          return;
+        }
+      }
+    }
+    
+    // Check for enemy junk pieces last
+    if (this.scene.junkPieces) {
+      for (const junk of this.scene.junkPieces) {
+        if (junk.owner === this.ship) continue; // Don't target own junk
+        
+        const dist = Phaser.Math.Distance.Between(
+          this.worldPos.x, this.worldPos.y,
+          junk.x, junk.y
+        );
+        
+        if (dist <= this.pdRange) {
+          // Fire at junk
+          this.fireAtJunkOrMine(junk, 'junk');
+          this.cooldown = 1 / this.pdFireRate;
+          return;
+        }
+      }
+    }
+  }
+  
+  fireAtJunkOrMine(target, type) {
+    // Damage the target directly (PD is very effective against stationary targets)
+    const damage = parseFloat(this.data.pdd || 0.1) * 100; // Scale up PD damage
+    target.health -= damage;
+    
+    // Create visual effect
+    const pdConfig = this.scene.visualConfig?.projectiles?.point_defense || {};
+    const spriteKey = (pdConfig.sprite || '/images/effects/missile-01.png').split('/').pop().replace('.png', '');
+    
+    const effect = this.scene.add.image(this.worldPos.x, this.worldPos.y, spriteKey);
+    effect.setScale(pdConfig.scale || 0.008);
+    effect.setDepth(5);
+    effect.setTint(0xffaa00);
+    
+    // Animate to target
+    this.scene.tweens.add({
+      targets: effect,
+      x: target.x,
+      y: target.y,
+      duration: 100,
+      onComplete: () => {
+        effect.destroy();
+      }
+    });
   }
   
   onDestroy() {

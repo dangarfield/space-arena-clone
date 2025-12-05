@@ -571,11 +571,7 @@ export default function FittingScene(props) {
             setActiveTab('weapons'); 
             setActiveSubTab('ballistic');
             // Auto-select first module
-            const firstModule = availableModules().weapons.find(m => {
-              const name = m.name.toLowerCase();
-              const type = m.stats.Type?.toLowerCase() || '';
-              return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
-            });
+            const firstModule = availableModules().weapons.find(m => m.category & 1);
             if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
           }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'weapons' ? '#ff4444' : '#003366',
@@ -587,7 +583,7 @@ export default function FittingScene(props) {
             setActiveTab('defense'); 
             setActiveSubTab('armor');
             // Auto-select first module
-            const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('armor'));
+            const firstModule = availableModules().defense.find(m => m.category & 8);
             if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
           }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'defense' ? '#4444ff' : '#003366',
@@ -599,7 +595,7 @@ export default function FittingScene(props) {
             setActiveTab('utility'); 
             setActiveSubTab('reactor');
             // Auto-select first module
-            const firstModule = availableModules().utility.find(m => m.name.toLowerCase().includes('reactor'));
+            const firstModule = availableModules().utility.find(m => m.category & 128);
             if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
           }} style={{
             flex: 1, padding: '8px', background: activeTab() === 'utility' ? '#ffaa00' : '#003366',
@@ -615,11 +611,7 @@ export default function FittingScene(props) {
             <Show when={activeTab() === 'weapons'}>
               <button onClick={() => {
                 setActiveSubTab('ballistic');
-                const firstModule = availableModules().weapons.find(m => {
-                  const name = m.name.toLowerCase();
-                  const type = m.stats.Type?.toLowerCase() || '';
-                  return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
-                });
+                const firstModule = availableModules().weapons.find(m => m.category & 1);
                 if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'ballistic' ? '#ff6666' : '#002244',
@@ -627,11 +619,7 @@ export default function FittingScene(props) {
               }}>Ballistic</button>
               <button onClick={() => {
                 setActiveSubTab('laser');
-                const firstModule = availableModules().weapons.find(m => {
-                  const name = m.name.toLowerCase();
-                  const type = m.stats.Type?.toLowerCase() || '';
-                  return type.includes('laser') || name.includes('laser');
-                });
+                const firstModule = availableModules().weapons.find(m => m.category & 4);
                 if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'laser' ? '#ff6666' : '#002244',
@@ -639,11 +627,7 @@ export default function FittingScene(props) {
               }}>Laser</button>
               <button onClick={() => {
                 setActiveSubTab('missile');
-                const firstModule = availableModules().weapons.find(m => {
-                  const name = m.name.toLowerCase();
-                  const type = m.stats.Type?.toLowerCase() || '';
-                  return type.includes('missile') || name.includes('missile') || name.includes('rocket') || name.includes('torpedo');
-                });
+                const firstModule = availableModules().weapons.find(m => m.category & 2);
                 if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'missile' ? '#ff6666' : '#002244',
@@ -653,7 +637,7 @@ export default function FittingScene(props) {
             <Show when={activeTab() === 'defense'}>
               <button onClick={() => {
                 setActiveSubTab('armor');
-                const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('armor'));
+                const firstModule = availableModules().defense.find(m => m.category & 8);
                 if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'armor' ? '#6666ff' : '#002244',
@@ -661,7 +645,7 @@ export default function FittingScene(props) {
               }}>Armor</button>
               <button onClick={() => {
                 setActiveSubTab('shield');
-                const firstModule = availableModules().defense.find(m => m.name.toLowerCase().includes('shield'));
+                const firstModule = availableModules().defense.find(m => m.category & 16);
                 if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'shield' ? '#6666ff' : '#002244',
@@ -671,7 +655,7 @@ export default function FittingScene(props) {
             <Show when={activeTab() === 'utility'}>
               <button onClick={() => {
                 setActiveSubTab('reactor');
-                const firstModule = availableModules().utility.find(m => m.name.toLowerCase().includes('reactor'));
+                const firstModule = availableModules().utility.find(m => m.category & 128);
                 if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'reactor' ? '#ffcc66' : '#002244',
@@ -679,10 +663,7 @@ export default function FittingScene(props) {
               }}>Reactor</button>
               <button onClick={() => {
                 setActiveSubTab('engine');
-                const firstModule = availableModules().utility.find(m => {
-                  const name = m.name.toLowerCase();
-                  return name.includes('drive') || name.includes('thruster') || name.includes('engine');
-                });
+                const firstModule = availableModules().utility.find(m => m.category & 64);
                 if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'engine' ? '#ffcc66' : '#002244',
@@ -690,10 +671,7 @@ export default function FittingScene(props) {
               }}>Engine</button>
               <button onClick={() => {
                 setActiveSubTab('support');
-                const firstModule = availableModules().utility.find(m => {
-                  const name = m.name.toLowerCase();
-                  return name.includes('repair') || name.includes('point defense') || name.includes('defense system');
-                });
+                const firstModule = availableModules().utility.find(m => (m.category & 32) || (m.category & 256));
                 if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
               }} style={{
                 padding: '5px 10px', background: activeSubTab() === 'support' ? '#ffcc66' : '#002244',
@@ -708,11 +686,9 @@ export default function FittingScene(props) {
           <div style={{ display: 'flex', 'flex-direction': 'column', gap: '6px' }}>
             <Show when={activeTab() === 'weapons'}>
               <For each={availableModules().weapons.filter(m => {
-                const name = m.name.toLowerCase();
-                const type = m.stats.Type?.toLowerCase() || '';
-                if (activeSubTab() === 'ballistic') return type.includes('ballistic') || name.includes('gun') || name.includes('cannon');
-                if (activeSubTab() === 'laser') return type.includes('laser') || name.includes('laser');
-                if (activeSubTab() === 'missile') return type.includes('missile') || name.includes('missile') || name.includes('rocket') || name.includes('torpedo');
+                if (activeSubTab() === 'ballistic') return m.category & 1;
+                if (activeSubTab() === 'laser') return m.category & 4;
+                if (activeSubTab() === 'missile') return m.category & 2;
                 return false;
               })}>
                 {(module) => (
@@ -728,9 +704,8 @@ export default function FittingScene(props) {
             </Show>
             <Show when={activeTab() === 'defense'}>
               <For each={availableModules().defense.filter(m => {
-                const name = m.name.toLowerCase();
-                if (activeSubTab() === 'armor') return name.includes('armor');
-                if (activeSubTab() === 'shield') return name.includes('shield');
+                if (activeSubTab() === 'armor') return m.category & 8;
+                if (activeSubTab() === 'shield') return m.category & 16;
                 return false;
               })}>
                 {(module) => (
@@ -746,10 +721,9 @@ export default function FittingScene(props) {
             </Show>
             <Show when={activeTab() === 'utility'}>
               <For each={availableModules().utility.filter(m => {
-                const name = m.name.toLowerCase();
-                if (activeSubTab() === 'reactor') return name.includes('reactor');
-                if (activeSubTab() === 'engine') return name.includes('drive') || name.includes('thruster') || name.includes('engine');
-                if (activeSubTab() === 'support') return name.includes('repair') || name.includes('point defense') || name.includes('defense system');
+                if (activeSubTab() === 'reactor') return m.category & 128;
+                if (activeSubTab() === 'engine') return m.category & 64;
+                if (activeSubTab() === 'support') return (m.category & 32) || (m.category & 256);
                 return false;
               })}>
                 {(module) => (

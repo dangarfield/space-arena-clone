@@ -30,41 +30,57 @@ This document describes all calculations, formulas, and hardcoded values in the 
 
 **Damage Calculation (Per Module Hit):**
 ```javascript
-// Wiki Formula for Penetrating Damage:
-// Dmg(C1) = Damage - Armor(C1)
-// Dmg(C2) = (Dmg(C1) × Pen × (1-AntiPen)) - Armor(C2)
-// Dmg(Cn) = (Dmg(Cn-1) × Pen × (1-AntiPen)) - Armor(Cn)
-
 // First module hit
-rawDamage = baseDamage - moduleArmor
-rawDamage = max(1, rawDamage)
+damage = baseDamage - moduleArmor
+damage = max(1, damage)
+
+// For subsequent modules (after penetrating)
+if (penetratedModules > 0) {
+  damageMultiplier = max(0.25, ddo) // Minimum 25% damage retained
+  damage = previousDamage * damageMultiplier - moduleArmor
+  damage = max(1, damage)
+}
 
 // Ballistics ignore reflect (armor only)
-finalDamage = rawDamage
-
-// For subsequent modules (piercing)
-if (penetratedModules > 0) {
-  // Pen = penetration factor (from rp/rf)
-  // AntiPen = anti-penetration (from ddo)
-  finalDamage = previousDamage × Pen × (1 - AntiPen) - currentModuleArmor
-  finalDamage = max(1, finalDamage)
-}
 ```
 
-**Key Insight from Wiki:**
+**Penetration Mechanics:**
+```javascript
+// Max modules that can be penetrated
+maxPenetration = ceil(rp / 4)
+
+// After each hit, check if projectile continues
+penetrationChance = min(1.0, rp / ip)
+willPenetrate = random() < penetrationChance
+
+// Stop if:
+// - penetratedModules >= maxPenetration, OR
+// - failed penetration chance
+```
+
+**Key Insights:**
 - Ballistics use **armor only** (flat reduction)
 - **Reflect does NOT affect ballistics**
-- Penetration uses Pen × (1-AntiPen) formula
-- "Ramp up mechanic" allows low damage ballistics to eventually destroy high armor
+- Penetration is probabilistic based on `rp/ip` ratio
+- Damage retained on penetration: `max(0.25, ddo)` (minimum 25%)
 
 **Piercing Mechanics:**
-- `rf` (Ricochet Factor): Maximum number of modules that can be penetrated (0-15)
-- `rp` (Ricochet Power): Penetration strength (0-200)
-- `ddo` (Damage Dropoff): Damage reduction per module (0-1, typically 0.2-0.5)
-- Projectile continues through modules until:
-  - Damage drops below 1
-  - Maximum penetration depth (rf) reached
-  - No more modules in path
+- `rf` (Ricochet Factor): Max modules that can be penetrated (0-30)
+- `rp` (Ricochet Power): Penetration strength (0-3500)
+- `ip` (Impact Power): Armor penetration resistance (0-8500)
+- `ddo` (Damage Dropoff): Damage multiplier on penetration (0-1)
+- `imf` (Impact Force Multiplier): UNUSED (legacy field)
+
+**Penetration Formula:**
+- Max penetration depth: `ceil(rf / 4)` modules
+- Penetration chance per hit: `min(1.0, rp / ip)`
+- Damage on subsequent hits: `previousDamage * max(0.25, ddo) - armor`
+
+**Examples:**
+- **Chaingun** (`rf=0`, `rp=0`, `ip=10`): No penetration
+- **Vulcan Cannon** (`rf=2`, `rp=10`, `ip=100`): 10% chance, max 1 module (ceil(2/4))
+- **Quantum Rifle** (`rf=15`, `rp=100`, `ip=250`, `ddo=0.55`): 40% chance, max 4 modules (ceil(15/4)), 55% damage retained
+- **Capital Cannon** (`rf=30`, `rp=3500`, `ip=8500`, `ddo=0.45`): 41% chance, max 8 modules (ceil(30/4)), 45% damage retained
 
 **Module Data Fields:**
 - `dmg`: Base damage per projectile
@@ -194,10 +210,12 @@ if (explosionRadius > 0) {
   4. **Missiles ignore reflect parameter**
 
 **Point Defense Interaction:**
-- NOT YET IMPLEMENTED
-- PDT range: ~10 blocks effective
-- PDT fire rate: 10 shots/sec (0.1s cooldown)
-- Kill chances: `pdmsc` (missiles), `pdmnc` (mines), `pdtc` (torpedoes)
+- PD fires orange-tinted missile sprites at incoming projectiles
+- Range: 19 units (from `pdr` field)
+- Speed: 50 units/sec
+- Intercept chances: `pdmsc` (missiles), `pdmnc` (mines), `pdtc` (torpedoes)
+- Also intercepts ballistics (30% chance in implementation)
+- Targets enemy junk and mines (priority: missiles → mines → junk)
 
 **Module Data Fields:**
 - `dmg`: Base damage
@@ -211,6 +229,52 @@ if (explosionRadius > 0) {
 - `mer`: Explosion radius (0 = direct hit only)
 - `mef`: Explosion force multiplier
 
+### Junk Launcher
+**Projectile Properties:**
+- Visual: Debris sprites with random rotation
+- Health: 15 HP per piece
+- Speed: Random variation (70-130% of base)
+- Spread: Uses module `ss` field (typically 10 for wide spread)
+- Deceleration: Slows to a stop near launch point
+
+**Mechanics:**
+```javascript
+// Fires multiple pieces with staggered timing (0-200ms)
+// Each piece blocks enemy weapons until destroyed
+// Ballistics: Must deal 15 damage to destroy
+// Missiles: Destroyed on contact (15+ damage)
+// Lasers: Can be distracted/redirected
+// Point Defense: Can target and destroy junk
+```
+
+**Module Data Fields:**
+- `mc`: Junk count per shot
+- `ss`: Shot spread (0-10, higher = wider spread)
+- `ats`: Fire rate
+
+### Mine Launcher
+**Projectile Properties:**
+- Visual: Mine sprites with random rotation
+- Explosion: Damages all modules in radius
+- Speed: Random variation, decelerates to stop
+- Launch: 360° spread (all directions)
+- Collision: Explodes within 2 units of enemy module
+
+**Mechanics:**
+```javascript
+// Fires mines in all directions with staggered timing (0-100ms)
+// Mines decelerate and spin in place
+// Explode on proximity to enemy modules (2 unit radius)
+// Explosion damages all modules in blast radius
+// Point Defense: Can intercept mines
+```
+
+**Module Data Fields:**
+- `mc`: Mine count per shot
+- `mer`: Explosion radius
+- `mef`: Explosion force multiplier
+- `ats`: Fire rate
+
 ## Ship Movement
 
 ### Engine System
@@ -218,17 +282,29 @@ if (explosionRadius > 0) {
 ```javascript
 totalThrust = sum(engine.getThrustContribution() for all alive engines)
 totalTurn = sum(engine.getTurnContribution() for all alive engines)
+totalMass = sum(module.m for all modules)
 
-// Rotation
+// Rotation (factoring in mass for rotational inertia)
 angleDiff = wrapAngle(angleToEnemy - ship.rotation)
-turnAmount = angleDiff * totalTurn * shipTurnPower * turnMultiplier * dt
+turnAcceleration = (totalTurn * shipTurnPower) / totalMass
+turnAmount = angleDiff * turnAcceleration * turnMultiplier * dt
 ship.rotation += turnAmount
 
 // Forward movement (only if facing target within 45°)
 if (abs(angleDiff) < PI/4) {
-  acceleration = [cos(rotation), sin(rotation)] * totalThrust * thrustMultiplier * dt
-  velocity += acceleration
+  acceleration = totalThrust / totalMass  // F = ma
+  velocity += [cos(rotation), sin(rotation)] * acceleration * thrustMultiplier * dt
 }
+
+// Lateral strafe (30% of forward thrust)
+if (strafeDirection) {
+  acceleration = totalThrust / totalMass
+  perpAngle = rotation + PI/2
+  velocity += [cos(perpAngle), sin(perpAngle)] * strafeDirection * acceleration * 0.3 * thrustMultiplier * dt
+}
+
+// Velocity damping (friction)
+velocity *= velocityDamping  // default 0.98
 
 // Speed cap
 currentSpeed = length(velocity)
@@ -243,13 +319,16 @@ position += velocity * dt
 **Hardcoded Multipliers:**
 - `turnMultiplier`: 0.02 (configurable)
 - `thrustMultiplier`: 0.0001 (configurable)
+- `velocityDamping`: 0.98 (configurable)
 - Facing threshold: 45° (π/4 radians)
+- Strafe strength: 30% of forward thrust
 
 **Ship Data Fields:**
 - `ms`: Max speed
 - `ts`: Turn power
 - `ep` (engine module): Thrust power
 - `ts` (engine module): Turn contribution
+- `m` (all modules): Mass (affects acceleration)
 
 ## Collision Detection
 
@@ -303,32 +382,175 @@ for each module sorted by distance:
   - Go straight to modules behind
 
 ## Shield System
+
 **Properties:**
 - Visual: Circle with radius from module data
-- Color: 0x00aaff (cyan), alpha 0.2
-- Mechanics: NOT YET IMPLEMENTED
+- Color: 0x4444ff (blue), alpha based on strength
+- Blocks ballistics and missiles, bypassed by lasers
 
-**Planned Mechanics:**
-- Shields absorb damage before modules
-- Shield edge proximity affects AOE damage to modules behind
-- Regenerates over time when not taking damage
-- Multiple shields can stack for layered defense
+**Mechanics:**
+```javascript
+// Shield absorbs damage before module health
+if (shield.currentShield > 0) {
+  damage = damage - shield.armor  // Shields have armor stat
+  damage = max(1, damage)
+  shield.currentShield -= damage
+  
+  if (shield.currentShield < 0) {
+    // Excess damage goes to shield module
+    excessDamage = -shield.currentShield
+    shield.currentShield = 0
+    module.takeDamage(excessDamage)
+  }
+}
+
+// Regeneration after 2s without damage
+if (timeSinceLastHit >= 2.0 && currentShield < regenCapacity) {
+  currentShield += regenSpeed * dt
+  currentShield = min(regenCapacity, currentShield)
+}
+```
 
 **Module Data Fields:**
 - `sr`: Shield radius
-- `sa`: Shield strength (hit points)
-- `smr`: Max regeneration capacity
-- `srs`: Regeneration speed
+- `sa`: Shield strength (initial HP)
+- `smr`: Max regeneration capacity (can't regen above this)
+- `srs`: Regeneration speed (HP/sec)
+- `a`: Armor (shields have hidden armor values)
 
-**Open Questions:**
-- Do shields trigger ballistic DDO (count as module encounter)?
-- How does AOE damage interact with shield edges?
-- Can stacked shields limit piercing weapon effectiveness?
+**Key Behaviors:**
+- Lasers completely bypass shields (raycast directly to modules)
+- Ballistics and missiles blocked if projectile position is within shield radius
+- Only one shield takes damage even if multiple overlap
+- Shield opacity reflects current strength
+- Shields regenerate after 2s delay without taking damage
+- Regen capacity limits total regeneration (not infinite)
+
+## Afterburner System
+
+**Properties:**
+- Speed multiplier: `mvmb` field (typically 2x)
+- Thrust multiplier: `tb` field (typically 1.5x)
+- Duration: `dur` or `dc` field (seconds)
+- Cooldown: `cd` field (seconds between uses)
+
+**Mechanics:**
+```javascript
+// When activated
+ship.speedMultiplier *= afterburner.movementBoost
+ship.thrustMultiplier *= afterburner.thrustBoost
+
+// Applied to all movement
+velocity += thrust * thrustMultiplier * dt
+
+// Deactivates after duration expires
+// Cooldown starts after deactivation
+```
+
+**AI Behavior:**
+- Activates when distance > 300 units from enemy
+- Activates when ship health < 30%
+- Visual feedback: Orange tint on afterburner module
+
+**Module Data Fields:**
+- `mvmb`: Movement boost multiplier (speed)
+- `tb`: Thrust boost multiplier (acceleration)
+- `dur` or `dc`: Duration in seconds
+- `cd`: Cooldown in seconds
+
+## Reactor Explosion System
+
+**Properties:**
+- Explosion radius: `er` field (grid cells, Manhattan distance)
+- Explosion damage: `ed` field (damage amount)
+
+**Mechanics:**
+```javascript
+// Grid-based distance (Manhattan distance)
+// Only horizontal/vertical, not diagonal
+for each reactor cell (col, row):
+  for each module cell (moduleCol, moduleRow):
+    // Calculate Manhattan distance
+    if (sameColumn):
+      distance = abs(verticalDiff)
+    else if (sameRow):
+      distance = abs(horizontalDiff)
+    else:
+      distance = abs(horizontalDiff) + abs(verticalDiff)
+
+    if (distance <= explosionRadius):
+      module.takeDamage(explosionDamage) // Full damage, no falloff
+```
+
+**Key Behaviors:**
+- Triggered when reactor module is destroyed
+- Uses Manhattan distance (horizontal + vertical cells)
+- Diagonal cells NOT affected (must be in straight line)
+- Full damage to all modules in radius (no falloff)
+- Only affects modules on same ship
+- Each cell of multi-cell reactor checks independently
+
+**Example:**
+- 2x2 reactor with `er=2`, `ed=50`
+- Reactor occupies cells (5,5), (6,5), (5,6), (6,6)
+- Module at (8,5): distance from (6,5) = 2 cells → takes 50 damage
+- Module at (5,8): distance from (5,6) = 2 cells → takes 50 damage
+- Module at (8,8): distance from (6,6) = 4 cells (2+2) → no damage if er=2
+
+**Module Data Fields:**
+- `er`: Explosion radius in grid cells (0-5 typical range)
+- `ed`: Explosion damage (50-200 typical range)
+- Only reactor modules have these fields
+
+## Repair Bay System
+
+**Properties (Hardcoded per Wiki):**
+- Repair capacity: 2500 HP per bay (total it can repair before depleted)
+- Repair speed: 9 HP/s per bay
+- Max active bays: 3 (only first 3 repair bays work)
+- Repair interval: 0.5s (checks for repairs twice per second)
+
+**Mechanics:**
+```javascript
+// Only first 3 alive repair bays are active
+activeRepairBays = repairBays.slice(0, 3)
+
+// Each bay independently:
+// Find damaged modules (alive but not at full health)
+damagedModules = ship.modules.filter(m => m.alive && m.health < m.maxHealth)
+
+// Sort by health percentage (lowest first)
+damagedModules.sort((a, b) => (a.health/a.maxHealth) - (b.health/b.maxHealth))
+
+// Repair most damaged module
+repairAmount = min(
+  9 * interval,  // 9 HP/s * 0.5s = 4.5 HP per check
+  maxHealth - currentHealth,
+  remainingCapacity
+)
+
+module.health += repairAmount
+remainingCapacity -= repairAmount
+```
+
+**Behavior:**
+- Each bay heals most damaged module first (by health %)
+- Each bay has independent 2500 HP capacity
+- Multiple bays can heal same module simultaneously (stacks)
+- Does not repair destroyed modules (alive=false)
+- Continuous healing during battle
+- 4th+ repair bays are inactive (wiki limit)
 
 ## Destruction Conditions
 Ship is destroyed when:
 - All weapons destroyed, OR
 - All reactors destroyed
+
+**Post-Battle:**
+- Weapons stop firing
+- Ships gradually slow down (95% friction per frame)
+- Victory/defeat screen appears (HTML overlay)
+- Continue button returns to hangar
 
 ## Time Scale System
 **Implementation:**
@@ -369,6 +591,58 @@ camera.scrollX = centerX - cameraWidth / 2
 camera.scrollY = centerY - cameraHeight / 2
 ```
 
+## Damage Ramping System
+
+**Mechanic:**
+- After 30 seconds of battle, all damage increases by 2% per second
+- Applies to all damage types (ballistic, laser, missile)
+- Prevents stalemates between heavily armored ships
+
+**Formula:**
+```javascript
+if (battleTime > 30) {
+  damageMultiplier = 1.0 + ((battleTime - 30) * 0.02)
+} else {
+  damageMultiplier = 1.0
+}
+
+finalDamage = baseDamage * damageMultiplier
+```
+
+**Examples:**
+- 30s: 1.0× damage (100%)
+- 40s: 1.2× damage (120%)
+- 60s: 1.6× damage (160%)
+- 90s: 2.2× damage (220%)
+
+## Visual Effects
+
+**Projectile Sprites:**
+- Ballistics: `/images/projectiles/bullet-*.png` (per module key)
+- Missiles: `/images/projectiles/missile-*.png` (per module key)
+- Point Defense: `/images/projectiles/missile-01.png` (orange tint)
+- Junk: `/images/projectiles/junk-*.png` (random debris)
+- Mines: `/images/projectiles/mine-*.png` (proximity mines)
+
+**Particle Effects:**
+- Missile trails: `smoke.png` spritesheet (5×5 grid, 25 frames)
+- Explosions: `explosion.png` spritesheet (14 frames, 32×32)
+- Smoke clouds: `smoke.png` animation on module destruction
+
+**Pellet System:**
+- Shotguns fire 5-8 pellets with staggered timing (0-100ms)
+- Junk launcher fires multiple pieces with staggered timing (0-200ms)
+- Damage divided among pellets for balance
+- Spread uses module `ss` field
+
+**Background:**
+- 2-layer parallax starfield
+- Layer 0: Background image with tint and alpha (0.4)
+- Scales inversely with camera zoom
+- 9 background variants (blue/green/purple)
+
+**Config:** All visual settings in `src/config/visual-effects.json`
+
 ## Configurable Parameters (lil-gui)
 
 ### Battle View
@@ -377,20 +651,29 @@ camera.scrollY = centerY - cameraHeight / 2
 - Show Firing Cones
 - Show Direction Lines
 - Show Shield Radius
+- Debug Modules (off by default)
 
 ### Battle Actions
 - Enable Engines
 - Enable Weapons
 
 ### Battle Variables
-- Time Scale: 0-5 (default 0.1)
+- Time Scale: 0.1-10 (default 1.0)
 - Turn Speed: 0-0.1 (default 0.02)
 - Thrust Speed: 0-0.001 (default 0.0001)
+- Velocity Damping: 0.9-1.0 (default 0.98)
+- Engagement Range: 0.1-1.0 (default 0.7)
 - Ballistic Speed: 0-200 (default 400)
 - Missile Speed: 0-100 (default 30)
 - Missile Launch Angle: 0-90° (default 30°)
-- Missile Track Delay: 0-2s (default 0.2s)
-- Missile Turn Rate: 0-0.2 (default 0.1)
+- Missile Track Delay: 0-2s (default 0.5s)
+- Missile Turn Rate: 0-0.2 (default 0.05)
+- Missile Damage Factor: 0.1-2.0 (default 0.1)
+- Laser Beam Width: 0.1-5 (default 0.1)
+
+### Battle Stats (Read-Only)
+- Battle Time (seconds)
+- Damage Multiplier (1.0-5.0)
 
 ## Module Health System
 **Visual Indicators:**
@@ -406,12 +689,15 @@ camera.scrollY = centerY - cameraHeight / 2
 ## AI Behavior
 **Weapon Targeting:**
 - Fire when: distance <= weapon.range AND cooldown ready
-- Target: Enemy ship (weapons choose random alive modules for missiles)
+- Target: Closest entity in firing cone (modules, junk, or mines)
+- Weapons prioritize closest target regardless of type
 
 **Movement:**
 - Rotate towards enemy
 - Move forward when facing within 45°
-- No evasion or advanced tactics
+- Deadzone: 0.8-1.2x engagement range (reduced chasing)
+- Thrust: 70% strength (was 100%)
+- Lateral strafing: Every 2s, 30% strength
 
 ## Community Research Integration
 
@@ -428,12 +714,28 @@ This implementation is based on extensive community research:
 5. Missile MACC is inverse (higher = less accurate)
 6. Reflect reduces damage after armor calculation
 
-**Not Yet Implemented:**
-- Point Defense Systems (PDT)
-- Shield damage absorption
+**Implemented:**
+- Mass-based movement physics
+- Damage ramping after 30s (2%/sec increase)
+- Shield damage absorption and regeneration (2s delay)
+- Warp drive teleport mechanics
+- Missile smoke trails and explosions
+- Module destruction effects (explosions, smoke)
+- Point defense interceptors (missiles, mines, junk)
+- Per-module visual configs (projectiles, effects)
+- Junk launcher (debris blocking, 15 HP each)
+- Mine launcher (proximity mines, 2 unit trigger radius)
+- Pellet system (shotguns 5-8 pellets, junk multiple pieces)
+- Weapon targeting (modules, junk, mines in firing cone)
+- Laser retargeting (when current target destroyed)
+- Starfield parallax background (2 layers, 9 variants)
+- Afterburner boost (speed/thrust multipliers with cooldown, AI activation)
+- Reactor explosions (Manhattan distance, horizontal/vertical only, full damage in radius)
+- Victory/defeat screen (HTML overlay with continue button, 95% friction slowdown)
+- Repair bay healing (2500 HP/bay, 9 HP/s, max 3 active, prioritizes lowest health %)
+
+**Not Implemented:**
 - Burst fire mechanics
-- Reactor explosion on destruction
-- Afterburner systems
 
 ## Data Sources
 All combat values come from:

@@ -24,9 +24,9 @@ Complete comparison of all module types with localized names and key statistics.
 | Rail Turret | BALLISTIC_TURRET3X3 | Mk.II | 3x3 | 14 | 0.15 | 70 | 10 | 350 | 50 | 100 | 10 | 0 |
 | Gaussian Shotgun | SHOTGUN2X3 |  | 2x3 | 8 | 1.7 | 28 | 10 | 10 | 5 | 10 | 1 | 0 |
 | Gaussian War Shotgun | SHOTGUN3X4 |  | 3x4 | 11 | 0.15 | 37 | 10 | 20 | 10 | 20 | 2 | 0 |
-| Quantum Rifle | PIERCING_BALLISTIC1X4 |  | 1x4 | 16 | 2.5 | 80 | 3 | 250 | 60 | 100 | 15 | 0 |
-| Quantum Turret | PIERCING_TURRET3X3 |  | 3x3 | 13 | 0.2 | 80 | 3 | 250 | 40 | 100 | 15 | 0 |
-| Quantum Turret | PIERCING_TURRET3X3 | Mk.II | 3x3 | 24 | 0.3 | 70 | 3 | 250 | 40 | 100 | 15 | 0 |
+| Quantum Rifle | PIERCING_BALLISTIC1X4 |  | 1x4 | 16 | 2.5 | 80 | 3 | 250 | 60 | 100 | 15 | 0.55 |
+| Quantum Turret | PIERCING_TURRET3X3 |  | 3x3 | 13 | 0.2 | 80 | 3 | 250 | 40 | 100 | 15 | 0.5 |
+| Quantum Turret | PIERCING_TURRET3X3 | Mk.II | 3x3 | 24 | 0.3 | 70 | 3 | 250 | 40 | 100 | 15 | 0.55 |
 
 **Key Stats:**
 - `dmg`: Damage per projectile
@@ -37,14 +37,15 @@ Complete comparison of all module types with localized names and key statistics.
 - `imf`: Impact force multiplier
 - `rp`: Ricochet power (penetration depth)
 - `rf`: Ricochet factor (max layers penetrated)
-- `ddo`: Damage dropoff over distance
+- `ddo`: Damage dropoff per penetration (0-1, anti-penetration factor)
 
 **Observations:**
 - **Burst weapons** (ats ≥2.0): Railgun, Gauss Rifle, Capital Cannon, Quantum Rifle
-- **Shotguns** (ss=10, short range): Likely fire multiple pellets (not in data)
+- **Shotguns** (ss=10, short range): Fire multiple pellets (5-8, configured in visual-effects.json)
 - **Turrets** (360° arc): All have ss=10 (wide spread) or ss=3 (piercing)
-- **Piercing weapons** (rf ≥10): Quantum series, Capital Cannon (rf=30)
-- **Missing data**: Pellet count not present (mc=0 for all)
+- **Piercing weapons** (rf ≥10): Quantum series (rf=15, ddo=0.5-0.55), Capital Cannon (rf=30, ddo=0.45)
+- **Damage dropoff**: Only on high-tier piercing weapons (Capital Cannon, Quantum series)
+- Most weapons have ddo=0 (no anti-penetration)
 
 ---
 
@@ -132,10 +133,12 @@ Complete comparison of all module types with localized names and key statistics.
 - Bunker Shield: No regen but has reflect
 
 **Observations:**
-- Shields block ballistics and missiles, useless vs lasers
+- Shields block ballistics and missiles, bypassed by lasers
 - Regeneration starts after 2s without damage
 - Larger shields cover more of the ship
 - Bunker Shield is unique: no regen, high initial strength
+- Shields have hidden armor values that reduce incoming damage
+- FULLY IMPLEMENTED in battle system
 
 ---
 
