@@ -345,8 +345,12 @@ pnpm run convert   # Markdown → src/data/*.json
 - Laser targeting: Retargets when current target (module/junk/mine) is destroyed
 
 **Not Implemented:**
-- Campaign progression
-- Module unlocks by level
+- Campaign progression (no mission advancement system)
+- Economic system (cst/hcst costs exist but no currency/purchasing implemented)
+- Experience earning (xp field exists but no XP gain from battles)
+- Module shop unlocks (all modules available regardless of player level)
+
+**Note:** Fitting level rules ARE implemented - ships can only use modules up to (ship level + 5)
 
 ## Debugging Tips
 

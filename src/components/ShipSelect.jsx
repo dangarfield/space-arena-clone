@@ -1,4 +1,6 @@
-import { createResource, For } from 'solid-js';
+import { createResource, For, Show } from 'solid-js';
+import GlobalHeader from './GlobalHeader';
+import PageTitle from './PageTitle';
 
 async function fetchShips() {
   const shipsData = await fetch('/data/ships.json').then(r => r.json());
@@ -6,13 +8,10 @@ async function fetchShips() {
   // Convert grid array to shape array (rotated 180 degrees)
   const convertGridToShape = (g, w, h) => {
     const shape = [];
-    // Iterate backwards through rows (bottom to top)
     for (let row = h - 1; row >= 0; row--) {
       let rowStr = '';
-      // Iterate backwards through columns (right to left)
       for (let col = w - 1; col >= 0; col--) {
         const cellValue = g[row * w + col];
-        // 0 = space, 1/2/3 = modules (D), 4 = engines only (E), 5 = both (B)
         if (cellValue === 0) rowStr += ' ';
         else if (cellValue === 4) rowStr += 'E';
         else if (cellValue === 5) rowStr += 'B';
@@ -26,18 +25,13 @@ async function fetchShips() {
   return Object.entries(shipsData)
     .filter(([key]) => key !== 'Drone' && key !== 'StarDestroyer' && key !== 'Falcon' && key !== 'Wing')
     .map(([key, ship]) => ({
-      id: key.toLowerCase().replace(/_/g, '_'),
+      id: key,
       name: ship.name,
-      class: ship.name,
+      sname: ship.sname,
       unlockLevel: ship.lr || 0,
       shape: convertGridToShape(ship.g, ship.w, ship.h),
-      stats: {
-        'Class': ship.name,
-        'Unlock level': String(ship.lr || 0),
-        'Turning': String(ship.ts || 0),
-        'Speed': String(ship.ms || 0),
-        'Cells without modifications': String(ship.sa || 0)
-      }
+      width: ship.w,
+      height: ship.h
     }))
     .filter(ship => ship.unlockLevel > 0)
     .sort((a, b) => a.unlockLevel - b.unlockLevel);
@@ -47,105 +41,126 @@ export default function ShipSelect(props) {
   const [ships] = createResource(fetchShips);
 
   return (
-    <div style={{ padding: '2rem', height: '100vh' }}>
-      <button
-        onClick={props.onBack}
-        style={{
-          'font-size': '24px',
-          background: 'transparent',
-          color: 'white',
-          border: 'none',
-          cursor: 'pointer',
-          'margin-bottom': '2rem'
-        }}
-      >
-        &lt; BACK
-      </button>
+    <div class="ship-select" style={{
+      display: 'flex',
+      'flex-direction': 'column',
+      height: '100vh',
+      background: '#0a0a1a'
+    }}>
+      <GlobalHeader player={props.player} />
+      <PageTitle title="Select Ship" onBack={props.onBack} />
       
-      <h1 style={{
-        'text-align': 'center',
-        'font-size': '48px',
-        color: '#00aaff',
-        'margin-bottom': '3rem'
-      }}>
-        SELECT YOUR SHIP
-      </h1>
-      
+      {/* Ship List */}
       <div style={{
-        display: 'grid',
-        'grid-template-columns': 'repeat(auto-fill, minmax(280px, 1fr))',
-        gap: '1.5rem',
-        padding: '0 2rem',
-        'max-height': 'calc(100vh - 200px)',
-        'overflow-y': 'auto'
+        flex: 1,
+        'overflow-y': 'auto',
+        padding: '1rem',
+        display: 'flex',
+        'flex-direction': 'column',
+        gap: '0.75rem'
       }}>
-        <For each={ships()}>
-          {(ship) => (
-            <div style={{
-              width: '300px',
-              padding: '20px',
-              background: '#003366',
-              border: '2px solid #0055aa',
-              'border-radius': '10px',
-              'text-align': 'center'
-            }}>
-              {/* Ship grid preview */}
-              <div style={{
-                display: 'grid',
-                'grid-template-columns': `repeat(${ship.shape?.[0]?.length || 6}, 20px)`,
-                gap: '2px',
-                'justify-content': 'center',
-                'margin-bottom': '20px'
-              }}>
-                <For each={ship.shape}>
-                  {(row) => (
-                    <For each={row.split('')}>
-                      {(cell) => (
-                        <div style={{
-                          width: '18px',
-                          height: '18px',
-                          background: cell === 'D' ? '#999999' : 
-                                     cell === 'E' ? '#6699cc' : 
-                                     cell === 'B' ? 'linear-gradient(to bottom right, #999999 0%, #999999 49%, #6699cc 51%, #6699cc 100%)' : 
-                                     'transparent',
-                          border: cell !== ' ' ? '1px solid #00aaff' : 'none'
-                        }} />
+        <Show when={ships()} fallback={
+          <div style={{ 'text-align': 'center', color: '#666', padding: '2rem' }}>
+            Loading ships...
+          </div>
+        }>
+          <For each={ships()}>
+            {(ship) => (
+              <button
+                onClick={() => props.onSelect?.(ship)}
+                style={{
+                  display: 'flex',
+                  'align-items': 'center',
+                  gap: '1rem',
+                  padding: '1rem',
+                  background: '#001a33',
+                  border: '2px solid #003366',
+                  'border-radius': '8px',
+                  cursor: 'pointer',
+                  'text-align': 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#003366';
+                  e.currentTarget.style.borderColor = '#00aaff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#001a33';
+                  e.currentTarget.style.borderColor = '#003366';
+                }}
+              >
+                {/* Ship Preview */}
+                <div style={{
+                  width: '80px',
+                  height: '80px',
+                  display: 'flex',
+                  'align-items': 'center',
+                  'justify-content': 'center',
+                  background: '#0a0a1a',
+                  'border-radius': '6px',
+                  'flex-shrink': 0,
+                  padding: '5px',
+                  overflow: 'hidden'
+                }}>
+                  {/* Simple grid visualization */}
+                  <div style={{
+                    display: 'grid',
+                    'grid-template-columns': `repeat(${ship.width}, ${Math.min(70 / ship.width, 70 / ship.height)}px)`,
+                    'grid-template-rows': `repeat(${ship.height}, ${Math.min(70 / ship.width, 70 / ship.height)}px)`,
+                    gap: '1px'
+                  }}>
+                    <For each={ship.shape}>
+                      {(row) => (
+                        <For each={row.split('')}>
+                          {(cell) => (
+                            <div style={{
+                              background: cell === ' ' ? 'transparent' : '#00aaff',
+                              'border-radius': '1px'
+                            }} />
+                          )}
+                        </For>
                       )}
                     </For>
-                  )}
-                </For>
-              </div>
-              
-              <h2 style={{ 'font-size': '32px', 'margin-bottom': '10px' }}>
-                {ship.name}
-              </h2>
-              <p style={{ color: '#00aaff', 'margin-bottom': '5px' }}>
-                {ship.class}
-              </p>
-              <p style={{ color: '#aaaaaa', 'margin-bottom': '20px' }}>
-                Level {ship.unlockLevel}
-              </p>
-              
-              <button
-                onClick={() => props.onSelect(ship)}
-                style={{
-                  'font-size': '24px',
-                  padding: '10px 30px',
-                  background: '#005500',
-                  color: 'white',
-                  border: 'none',
-                  'border-radius': '5px',
-                  cursor: 'pointer',
-                  transition: 'background 0.3s'
-                }}
-                onMouseOver={(e) => e.target.style.background = '#007700'}
-                onMouseOut={(e) => e.target.style.background = '#005500'}
-              >
-                SELECT
+                  </div>
+                </div>
+                
+                {/* Ship Info */}
+                <div style={{ flex: 1, 'min-width': 0 }}>
+                  <div style={{ 
+                    color: 'white', 
+                    'font-size': '16px', 
+                    'font-weight': '600',
+                    'margin-bottom': '0.25rem'
+                  }}>
+                    {ship.name}
+                  </div>
+                  <div style={{ 
+                    color: '#aaa', 
+                    'font-size': '13px',
+                    'margin-bottom': '0.25rem'
+                  }}>
+                    {ship.sname}
+                  </div>
+                  <div style={{ 
+                    color: '#00aaff', 
+                    'font-size': '12px'
+                  }}>
+                    Level {ship.unlockLevel}
+                  </div>
+                </div>
+                
+                {/* Arrow */}
+                <div style={{
+                  color: '#00aaff',
+                  'font-size': '20px',
+                  'flex-shrink': 0
+                }}>
+                  ›
+                </div>
               </button>
-            </div>
-          )}
-        </For>
+            )}
+          </For>
+        </Show>
       </div>
     </div>
   );

@@ -112,6 +112,24 @@ export default class JunkLauncherModule extends BaseModule {
         const speedVariation = 0.7 + Math.random() * 0.6; // 0.7 to 1.3
         const initialSpeed = 30 * speedVariation;
         
+        // Create sprite from spritesheet or fallback to rectangle
+        let sprite;
+        if (junkConfig.sprite && junkConfig.frames) {
+          // Pick random frame from spritesheet
+          const randomFrame = Math.floor(Math.random() * junkConfig.frames);
+          sprite = this.scene.add.sprite(this.worldPos.x, this.worldPos.y, 'junk-sheet', randomFrame);
+          sprite.setScale(junkConfig.scale || 0.005);
+        } else {
+          // Fallback to colored rectangle
+          sprite = this.scene.add.rectangle(
+            this.worldPos.x,
+            this.worldPos.y,
+            junkConfig.size || 0.5, 
+            junkConfig.size || 0.5, 
+            color
+          );
+        }
+        
         const junk = {
           type: 'junk',
           x: this.worldPos.x,
@@ -124,14 +142,10 @@ export default class JunkLauncherModule extends BaseModule {
           },
           deceleration: 0.95, // Slow down to 95% each frame
           lifetime: 0,
-          maxLifetime: 10,
+          maxLifetime: junkConfig.maxLifetime || 10,
           owner: this.ship,
           rotationSpeed: (Math.random() - 0.5) * 3, // -1.5 to 1.5 rad/sec
-          sprite: this.scene.add.rectangle(
-            this.worldPos.x,
-            this.worldPos.y,
-            junkConfig.size, junkConfig.size, color
-          )
+          sprite: sprite
         };
         
         junk.sprite.setDepth(3);

@@ -63,7 +63,7 @@ export default class MineLauncherModule extends BaseModule {
         damage: this.damage,
         explosionRadius: this.explosionRadius,
         lifetime: 0,
-        maxLifetime: 15, // Mines last longer
+        maxLifetime: mineConfig.maxLifetime || 10,
         owner: this.ship,
         sprite: null
       };

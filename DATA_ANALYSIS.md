@@ -232,8 +232,8 @@ Missile weapons fire tracking projectiles with AoE damage. Most effective agains
 - **dmg (Damage)**: 12-115 per missile. Torpedoes highest (80-115), basic rockets lowest (12-30).
 - **mc (Missile Count)**: 1-6 missiles per shot on 15/19 weapons. Arsenal Wall fires 6, most fire 1-3. More missiles = more total damage.
 - **mspd (Missile Speed)**: 50-180 blocks/sec on 14/19 weapons. Torpedoes slowest (50-65), standard missiles medium (90), one outlier at 180.
-- **macc (Missile Accuracy)**: 26-220 on 15/19 weapons. INVERSE scale - higher = less accurate. Torpedoes worst tracking (200-220), Flak poor (150-160), standard good (26).
-- **mfj (Missile Fuel)**: 50/65/90 on 14/19 weapons. Tracking duration tiers. 90 = best tracking, 50 = worst. Correlates with macc.
+- **macc (Missile Acceleration)**: 26-220 on 15/19 weapons. Flight acceleration rate. Higher = faster acceleration to max speed. Torpedoes fastest (200-220), Flak medium (150-160), standard slowest (26).
+- **mfj (Missile Fuel)**: 50/65/90 on 14/19 weapons. Tracking duration tiers. 90 = longest tracking, 50 = shortest. Determines how long missile can adjust course.
 - **mer (Explosion Radius)**: 1.2-1.6 on 15/19 weapons. AoE damage range. Larger = hits more modules.
 - **mef (Explosion Force)**: 25-150 on 15/19 weapons. Damage multiplier for explosion. Higher = more damage.
 - **mlf (Missile Lifetime)**: 0.65-4.4 seconds on 15/19 weapons. How long missile flies before self-destruct. Most are 4.0s.
@@ -245,17 +245,19 @@ Missile weapons fire tracking projectiles with AoE damage. Most effective agains
 - **imf (Impact Force Multiplier)**: 10-250. Penetration multiplier.
 - **ss (Shot Spread)**: 5-30 degrees on 5/19 weapons. Launch angle variation.
 
-**Tracking Tiers**:
-- **Good**: macc=26, mfj=90 (standard missiles)
-- **Medium**: macc=150-160, mfj=65 (flak rockets)
-- **Poor**: macc=200-220, mfj=50 (torpedoes - slow unguided)
+**Flight Characteristics**:
+- **Rockets**: macc=26 (slowest accel), mfj=90 (longest tracking), mspd=90 (medium speed) - agile, maneuverable, can have random fire cones
+- **Flak Rockets**: macc=150-160 (medium accel), mfj=65 (medium tracking), mspd=90 - balanced, multiple projectiles
+- **Torpedoes**: macc=200-220 (fastest accel), mfj=50 (shortest tracking), mspd=50-65 (slowest) - quick launch, limited turning, massive damage
 
 **Key Insights**:
-1. Missiles most effective vs armor because AoE hits multiple cells. 3x3 armor (9 cells) × 30 dmg = 270 total damage.
-2. Torpedoes are slow (50-65 speed), unguided (macc=200-220), but massive damage (80-115) and huge explosions.
-3. Missile accuracy is INVERSE - higher macc value = worse tracking.
-4. Point defense can intercept missiles (pdmsc field). Vulnerable to PD turrets.
-5. Reflect values vary more than other weapons (0.50-1.00 vs all 1.00 for ballistics/lasers).
+1. mer (explosion radius) measured in cells. If mer > 1, damages all modules in radius, but each module takes damage only once regardless of how many cells are hit.
+2. Missiles effective against clustered small modules (multiple 1x1s) rather than single large modules. AoE can hit multiple separate modules simultaneously.
+3. mlf (lifetime) determines max travel distance. Explodes if target not reached. All missiles have mlf=4.0s constant.
+4. macc is acceleration - higher = faster to max speed. mfj is tracking duration (fuel). mspd is max speed.
+5. Crossing shields take damage to one randomly (or both if mer > 1).
+6. Point defense can intercept once per missile (pdmsc field). Vulnerable to PD turrets.
+7. Reflect values vary (0.50-1.00 vs all 1.00 for ballistics/lasers).
 
 
 ### PointDefense (4 modules)
@@ -1712,7 +1714,7 @@ Analysis of each numeric attribute across all 41 ships.
 **Key Findings**:
 1. **Reflect System**: r field is resistance (not reflect %). Formula: damage = base × (1 - r). Data is CORRECT.
 2. **Penetration**: Uses rf (max depth), rp/ip (chance), ddo (damage retention). Only 5 weapons have penetration.
-3. **Missiles**: Most effective vs armor due to AoE hitting multiple cells. macc is INVERSE (higher = worse).
+3. **Missiles**: Most effective vs armor due to AoE hitting multiple cells. macc is acceleration (higher = faster).
 4. **Lasers**: Bypass shields, affected by reflect. Damage is DPS × duration.
 5. **Mass**: Affects acceleration directly. Heavy builds are slow.
 6. **Cost**: Economic progression system. High-end modules cost millions.

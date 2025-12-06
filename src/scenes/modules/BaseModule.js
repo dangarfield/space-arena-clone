@@ -65,11 +65,12 @@ export default class BaseModule {
     // No rotation - images point up naturally
     this.sprite.setRotation(0);
     
-    // Health indicator cell (underneath sprite)
+    // Health indicator cell (underneath sprite) - using graphics for rounded corners and gradient
     // Create at 0,0 - will be positioned by updateLocalPosition after being added to container
-    this.healthCell = this.scene.add.rectangle(0, 0, width, height, 0x00ff00);
-    this.healthCell.setOrigin(0.5);
+    this.healthCell = this.scene.add.graphics();
     this.healthCell.setDepth(0); // Behind sprite
+    this.cellWidth = width;
+    this.cellHeight = height;
     
     this.updateHealthCell();
   }
@@ -113,23 +114,93 @@ export default class BaseModule {
     if (!this.healthCell) return;
     
     const healthPercent = this.health / this.maxHealth;
+    const cellSize = 1; // Each cell is 1x1
+    const gap = 0.05; // Small gap between cells
+    const radius = cellSize * 0.15; // 15% corner radius
+    const borderWidth = 0.08; // Inner border width
     
-    if (healthPercent <= 0) {
-      // Destroyed - black cell, hide sprite
-      this.healthCell.setFillStyle(0x000000);
-      if (this.sprite) this.sprite.setVisible(false);
-    } else {
-      // Set color based on health
-      let color;
-      if (healthPercent > 0.5) {
-        color = 0x00ff00; // Green
-      } else if (healthPercent > 0.25) {
-        color = 0xff8800; // Orange
-      } else {
-        color = 0xff0000; // Red
+    this.healthCell.clear();
+    
+    // Draw individual 1x1 cells for the entire module
+    for (let row = 0; row < this.size.h; row++) {
+      for (let col = 0; col < this.size.w; col++) {
+        const cellX = -this.cellWidth/2 + col * cellSize + gap/2;
+        const cellY = -this.cellHeight/2 + row * cellSize + gap/2;
+        const cellW = cellSize - gap;
+        const cellH = cellSize - gap;
+        
+        if (healthPercent <= 0) {
+          // Destroyed - very dark grey
+          this.healthCell.fillStyle(0x1a1a1a, 1);
+          this.healthCell.fillRoundedRect(cellX, cellY, cellW, cellH, radius);
+        } else {
+          // Gradient from green (100%) -> yellow (50%) -> red (0%)
+          let topColor, bottomColor;
+          if (healthPercent > 0.5) {
+            // Green to yellow gradient
+            const t = (healthPercent - 0.5) * 2; // 0 to 1
+            topColor = this.interpolateColor(0xffff00, 0x00ff00, t);
+            bottomColor = this.interpolateColor(0xcccc00, 0x00cc00, t);
+          } else {
+            // Yellow to red gradient
+            const t = healthPercent * 2; // 0 to 1
+            topColor = this.interpolateColor(0xff0000, 0xffff00, t);
+            bottomColor = this.interpolateColor(0xcc0000, 0xcccc00, t);
+          }
+          
+          // Draw gradient using multiple horizontal strips
+          const strips = 8;
+          for (let i = 0; i < strips; i++) {
+            const stripY = cellY + (i * cellH / strips);
+            const stripH = cellH / strips;
+            const t = i / (strips - 1);
+            const color = this.interpolateColor(topColor, bottomColor, t);
+            this.healthCell.fillStyle(color, 1);
+            
+            if (i === 0) {
+              // Top strip with rounded top corners
+              this.healthCell.fillRoundedRect(cellX, stripY, cellW, stripH + 0.01, { tl: radius, tr: radius, bl: 0, br: 0 });
+            } else if (i === strips - 1) {
+              // Bottom strip with rounded bottom corners
+              this.healthCell.fillRoundedRect(cellX, stripY, cellW, stripH, { tl: 0, tr: 0, bl: radius, br: radius });
+            } else {
+              // Middle strips - no rounding
+              this.healthCell.fillRect(cellX, stripY, cellW, stripH + 0.01);
+            }
+          }
+          
+          // Add inner grey border (inset from edge)
+          this.healthCell.lineStyle(borderWidth, 0x666666, 0.4);
+          this.healthCell.strokeRoundedRect(
+            cellX + borderWidth/2, 
+            cellY + borderWidth/2, 
+            cellW - borderWidth, 
+            cellH - borderWidth, 
+            radius * 0.8
+          );
+        }
       }
-      this.healthCell.setFillStyle(color);
     }
+    
+    if (healthPercent <= 0 && this.sprite) {
+      this.sprite.setVisible(false);
+    }
+  }
+  
+  interpolateColor(color1, color2, t) {
+    const r1 = (color1 >> 16) & 0xff;
+    const g1 = (color1 >> 8) & 0xff;
+    const b1 = color1 & 0xff;
+    
+    const r2 = (color2 >> 16) & 0xff;
+    const g2 = (color2 >> 8) & 0xff;
+    const b2 = color2 & 0xff;
+    
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    
+    return (r << 16) | (g << 8) | b;
   }
   
   onDestroy() {

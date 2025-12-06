@@ -1,8 +1,17 @@
-import { For } from 'solid-js';
+import { For, createSignal, onMount } from 'solid-js';
 
 export default function ShipGrid(props) {
   const ship = () => props.ship;
   const interactive = () => props.interactive || false;
+  const [containerAspect, setContainerAspect] = createSignal(1);
+  let containerRef;
+  
+  onMount(() => {
+    if (containerRef?.parentElement) {
+      const rect = containerRef.parentElement.getBoundingClientRect();
+      setContainerAspect(rect.width / rect.height);
+    }
+  });
   
   // Convert grid format: g array + w/h to shape array
   const getShape = () => {
@@ -38,9 +47,10 @@ export default function ShipGrid(props) {
   const shape = () => getShape();
   const gridWidth = () => shape()[0]?.length || 6;
   const gridHeight = () => shape().length || 5;
+  const gridAspect = () => gridWidth() / gridHeight();
   
   return (
-    <div style={{ height: '100%', display: 'flex', 'align-items': 'center', 'justify-content': 'center' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', display: 'flex', 'align-items': 'center', 'justify-content': 'center' }}>
       <div 
         id={props.id || 'ship-grid'}
         style={{
@@ -52,8 +62,16 @@ export default function ShipGrid(props) {
           padding: '4px',
           border: '3px solid #00aaff',
           position: 'relative',
-          width: '100%',
-          height: '100%',
+
+          // Compare grid aspect to container aspect
+          ...(gridAspect() > containerAspect() ? {
+            width: '100%',
+            height: 'auto'
+          } : {
+            width: 'auto',
+            height: '100%'
+          }),
+
           'max-width': '100%',
           'max-height': '100%',
           'aspect-ratio': `${gridWidth()} / ${gridHeight()}`,

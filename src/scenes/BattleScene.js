@@ -75,6 +75,12 @@ export default class BattleScene extends Phaser.Scene {
       frameWidth: 32,
       frameHeight: 32
     });
+    
+    // Load junk spritesheet (736x182, 16 frames of 92x92 in 2 rows)
+    this.load.spritesheet('junk-sheet', '/images/effects/junk-01.png', {
+      frameWidth: 92,
+      frameHeight: 92
+    });
   }
 
   init(data) {
@@ -241,7 +247,8 @@ export default class BattleScene extends Phaser.Scene {
     this.gui = new GUI({ title: 'Battle Debug' });
     
     this.debugSettings = {
-      showModules: true,
+      showPlayerModules: true,
+      showEnemyModules: true,
       showStarfield: true,
       showFiringCones: true,
       showDirectionLines: false,
@@ -271,10 +278,13 @@ export default class BattleScene extends Phaser.Scene {
     // Battle View folder
     const viewFolder = this.gui.addFolder('Battle View');
     
-    viewFolder.add(this.debugSettings, 'showModules').name('Module Icons').onChange(v => {
+    viewFolder.add(this.debugSettings, 'showPlayerModules').name('Player Module Icons').onChange(v => {
       this.playerShip.modules.forEach(m => {
         if (m.sprite) m.sprite.setVisible(v);
       });
+    });
+    
+    viewFolder.add(this.debugSettings, 'showEnemyModules').name('Enemy Module Icons').onChange(v => {
       this.enemyShip.modules.forEach(m => {
         if (m.sprite) m.sprite.setVisible(v);
       });
@@ -1296,25 +1306,26 @@ export default class BattleScene extends Phaser.Scene {
             }
             
             if (cellsHit > 0) {
-              // Calculate damage per cell hit
+              // Calculate damage - module takes damage once regardless of cells hit (wiki rule)
               const closestX = Math.max(moduleBounds.left, Math.min(projectile.x, moduleBounds.right));
               const closestY = Math.max(moduleBounds.top, Math.min(projectile.y, moduleBounds.bottom));
               const dist = Phaser.Math.Distance.Between(projectile.x, projectile.y, closestX, closestY);
               const falloff = 1 - (dist / projectile.explosionRadius);
               const damageFactor = this.debugSettings?.missileDamageFactor || 0.1;
-              let damagePerCell = projectile.baseDamage * projectile.explosionForce * falloff * damageFactor * this.damageMultiplier;
+              let damage = projectile.baseDamage * projectile.explosionForce * falloff * damageFactor * this.damageMultiplier;
+              
+              // Future: multiply by surrounding module damage multiplier (currently 1.0)
+              const surroundingDamageMultiplier = 1.0;
+              damage = damage * surroundingDamageMultiplier;
               
               // Apply armor (flat reduction)
-              damagePerCell = damagePerCell - m.armor;
-              damagePerCell = Math.max(1, damagePerCell);
-              
-              // Total damage = damage per cell × cells hit
-              const totalDamage = damagePerCell * cellsHit;
+              damage = damage - m.armor;
+              damage = Math.max(1, damage);
               
               // Missiles ignore reflect (wiki: missiles not affected by reflect)
               
-              m.takeDamage(totalDamage);
-              console.log(`Explosion hit ${m.name} (${cellsHit}/${m.size.w * m.size.h} cells) at ${dist.toFixed(1)} units: ${damagePerCell.toFixed(1)}/cell × ${cellsHit} = ${totalDamage.toFixed(1)} total`);
+              m.takeDamage(damage);
+              console.log(`Explosion hit ${m.name} (${cellsHit}/${m.size.w * m.size.h} cells) at ${dist.toFixed(1)} units: ${damage.toFixed(1)} damage (module takes damage once)`);
             }
           });
           
@@ -1361,27 +1372,29 @@ export default class BattleScene extends Phaser.Scene {
     }
   }
 
-  createExplosion(x, y, scale = 1) {
+  createExplosion(x, y, scale = 1, smokeOnly = false) {
     const explosionConfig = this.visualConfig?.effects?.explosion || {};
     const smokeConfig = this.visualConfig?.effects?.smoke || {};
     
-    // Create explosion sprite animation
-    const explosion = this.add.sprite(x, y, 'explosion');
-    explosion.setScale(scale);
-    explosion.setDepth(explosionConfig.depth || 12);
+    // Create explosion sprite animation (unless smoke-only)
+    if (!smokeOnly) {
+      const explosion = this.add.sprite(x, y, 'explosion');
+      explosion.setScale(scale);
+      explosion.setDepth(explosionConfig.depth || 12);
+      
+      // Play explosion animation (14 frames)
+      explosion.anims.create({
+        key: 'explode',
+        frames: this.anims.generateFrameNumbers('explosion', { start: 0, end: 13 }),
+        frameRate: explosionConfig.frameRate || 30,
+        repeat: 0
+      });
+      
+      explosion.play('explode');
+      explosion.once('animationcomplete', () => explosion.destroy());
+    }
     
-    // Play explosion animation (14 frames)
-    explosion.anims.create({
-      key: 'explode',
-      frames: this.anims.generateFrameNumbers('explosion', { start: 0, end: 13 }),
-      frameRate: explosionConfig.frameRate || 30,
-      repeat: 0
-    });
-    
-    explosion.play('explode');
-    explosion.once('animationcomplete', () => explosion.destroy());
-    
-    // Add smoke effect on top
+    // Add smoke effect
     const smoke = this.add.sprite(x, y, 'smoke');
     smoke.setScale(scale * 0.5);
     smoke.setDepth(smokeConfig.depth || 11);
@@ -1423,10 +1436,14 @@ export default class BattleScene extends Phaser.Scene {
       
       // Remove if expired or destroyed
       if (junk.lifetime > junk.maxLifetime || junk.health <= 0) {
-        // Create small explosion if destroyed by damage
+        // Create effect based on removal reason
         if (junk.health <= 0) {
+          // Destroyed by damage - full explosion
           const explosionScale = this.visualConfig?.explosions?.junk?.scale || 0.03;
           this.createExplosion(junk.x, junk.y, explosionScale);
+        } else if (junk.lifetime > junk.maxLifetime) {
+          // Expired naturally - smoke effect only
+          this.createExplosion(junk.x, junk.y, 0.02, true);
         }
         // Destroy any laser beams targeting this junk
         if (junk.laserBeams) {
@@ -1472,7 +1489,8 @@ export default class BattleScene extends Phaser.Scene {
         
         if (distance < 2) { // Module hit mine (tight collision)
           // Create explosion
-          this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+          const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
+          this.createExplosion(mine.x, mine.y, explosionScale);
           
           // Damage nearby modules in explosion radius
           enemyShip.modules.forEach(m => {
@@ -1490,11 +1508,10 @@ export default class BattleScene extends Phaser.Scene {
       
       // Remove if expired or destroyed
       if (mine.lifetime > mine.maxLifetime || mine.health <= 0) {
-        // Create explosion if destroyed by damage
-        if (mine.health <= 0) {
-          const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
-          this.createExplosion(mine.x, mine.y, explosionScale);
-        }
+        // Create explosion (both damage and lifetime expiry)
+        const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
+        this.createExplosion(mine.x, mine.y, explosionScale);
+        
         // Destroy any laser beams targeting this mine
         if (mine.laserBeams) {
           mine.laserBeams.forEach(beam => beam.destroy());
@@ -1526,6 +1543,8 @@ export default class BattleScene extends Phaser.Scene {
             }
             
             if (junk.health <= 0) {
+              const explosionScale = this.visualConfig?.explosions?.junk?.scale || 0.03;
+              this.createExplosion(junk.x, junk.y, explosionScale);
               junk.sprite.destroy();
               this.junkPieces.splice(i, 1);
             }
@@ -1535,6 +1554,8 @@ export default class BattleScene extends Phaser.Scene {
             // Missile destroys junk and is destroyed
             junk.health -= projectile.baseDamage;
             if (junk.health <= 0) {
+              const explosionScale = this.visualConfig?.explosions?.junk?.scale || 0.03;
+              this.createExplosion(junk.x, junk.y, explosionScale);
               junk.sprite.destroy();
               this.junkPieces.splice(i, 1);
             }
@@ -1557,7 +1578,8 @@ export default class BattleScene extends Phaser.Scene {
             
             if (mine.health <= 0) {
               // Mine explodes
-              this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+              const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
+              this.createExplosion(mine.x, mine.y, explosionScale);
               mine.sprite.destroy();
               this.mines.splice(i, 1);
             }
@@ -1565,7 +1587,8 @@ export default class BattleScene extends Phaser.Scene {
             return true; // Projectile continues
           } else if (projectile.type === 'missile') {
             // Missile triggers mine explosion
-            this.createExplosion(mine.x, mine.y, mine.explosionRadius / 10);
+            const explosionScale = this.visualConfig?.explosions?.mine?.scale || 0.08;
+            this.createExplosion(mine.x, mine.y, explosionScale);
             mine.sprite.destroy();
             this.mines.splice(i, 1);
             return true; // Missile destroyed

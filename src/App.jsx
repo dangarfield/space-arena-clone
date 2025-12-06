@@ -105,6 +105,7 @@ export default function App() {
     <div style={{ width: '100%', height: '100vh' }}>
       <Show when={currentScene() === 'hangar'}>
         <HangarHub 
+          player={gameState().player}
           hangars={hangars()}
           initialActiveHangar={activeHangar()}
           onActiveHangarChange={handleActiveHangarChange}
@@ -113,10 +114,10 @@ export default function App() {
           onGoToFitting={handleGoToFitting}
           onGoToBattle={handleGoToBattle}
         />
-      </Show>
-      
+      </Show>      
       <Show when={currentScene() === 'shipSelect'}>
         <ShipSelect 
+          player={gameState().player}
           onBack={() => setCurrentScene('hangar')}
           onSelect={handleShipSelected}
         />
