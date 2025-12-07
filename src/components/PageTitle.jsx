@@ -4,7 +4,8 @@ export default function PageTitle(props) {
       display: 'flex',
       'align-items': 'center',
       'justify-content': 'center',
-      padding: '0.75rem',
+      height: '45px',
+      padding: '0 0.75rem',
       'border-bottom': '2px solid #003366',
       'flex-shrink': 0,
       position: 'relative'

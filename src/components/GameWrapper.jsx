@@ -1,8 +1,18 @@
 import { onMount, onCleanup, createSignal } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
+import { useGameState } from '../contexts/GameStateContext';
 import Phaser from 'phaser';
 import BattleScene from '../scenes/BattleScene';
 
-export default function GameWrapper(props) {
+export default function GameWrapper() {
+  const navigate = useNavigate();
+  const { gameState } = useGameState();
+  
+  const hangars = () => gameState().hangars;
+  const shipConfig = () => ({
+    player: hangars()[0],
+    enemy: hangars()[1]
+  });
   let gameContainer;
   let game;
   let debugDiv;
@@ -84,9 +94,9 @@ export default function GameWrapper(props) {
     
     // Pass battle config to game
     game.scene.start('BattleScene', {
-      playerConfig: props.shipConfig.player,
-      enemyConfig: props.shipConfig.enemy || props.shipConfig.player, // Fallback to player if no enemy
-      onBack: props.onBack,
+      playerConfig: shipConfig().player,
+      enemyConfig: shipConfig().enemy || shipConfig().player,
+      onBack: () => navigate('/'),
       onVictory: (won) => {
         setPlayerWon(won);
         setShowVictory(true);
@@ -190,7 +200,7 @@ export default function GameWrapper(props) {
                   if (game && game.scene.scenes[0] && game.scene.scenes[0].gui) {
                     game.scene.scenes[0].gui.destroy();
                   }
-                  props.onBack();
+                  navigate('/');
                 }}
                 style={{
                   'font-size': '24px',

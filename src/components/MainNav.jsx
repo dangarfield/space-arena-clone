@@ -5,6 +5,7 @@ export default function MainNav(props) {
     { id: 'hangar', label: 'Hangar', icon: '🚀' },
     { id: 'research', label: 'Research', icon: '🔬' },
     { id: 'leaderboard', label: 'Leaderboard', icon: '🏆' },
+    { id: 'database', label: 'Database', icon: '📊' },
     { id: 'shop', label: 'Shop', icon: '🛒' }
   ];
   

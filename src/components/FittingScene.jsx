@@ -1,5 +1,9 @@
 import { createSignal, createResource, createEffect, For, Show } from 'solid-js';
+import { useNavigate, useParams } from '@solidjs/router';
+import { useGameState } from '../contexts/GameStateContext';
 import ShipGrid from './ShipGrid';
+import GlobalHeader from './GlobalHeader';
+import PageTitle from './PageTitle';
 
 async function fetchModules() {
   console.log('fetchModules called');
@@ -88,16 +92,26 @@ async function fetchShip(shipId) {
   }
 }
 
-export default function FittingScene(props) {
-  console.log('FittingScene props:', props);
+export default function FittingScene() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const { gameState, updateHangar } = useGameState();
+  
+  const hangarIndex = () => parseInt(params.hangarIndex);
+  const player = () => gameState().player;
+  const currentHangar = () => gameState().hangars[hangarIndex()];
+  const shipId = () => currentHangar()?.shipId;
+  const initialModules = () => currentHangar()?.modules || [];
   
   const [modules] = createResource(fetchModules);
-  const [ship] = createResource(() => props.shipId, fetchShip);
+  const [ship] = createResource(shipId, fetchShip);
   const [placedModules, setPlacedModules] = createSignal([]);
   const [activeTab, setActiveTab] = createSignal('weapons');
   const [activeSubTab, setActiveSubTab] = createSignal('ballistic');
   const [selectedModule, setSelectedModule] = createSignal(null);
   const [hoverCell, setHoverCell] = createSignal(null);
+  const [menuLevel, setMenuLevel] = createSignal(0); // 0=categories, 1=subcategories, 2=modules
+  const [showModuleDetails, setShowModuleDetails] = createSignal(null);
   
 
   
@@ -133,9 +147,9 @@ export default function FittingScene(props) {
     return [];
   };
   
-  // Hydrate and sync placedModules with props.initialModules when they change
+  // Hydrate and sync placedModules with initialModules when they change
   createEffect(() => {
-    const initial = props.initialModules || [];
+    const initial = initialModules();
     const mods = modules();
     
     console.log('Hydration effect - initial:', initial, 'modules loaded:', !!mods);
@@ -401,17 +415,69 @@ export default function FittingScene(props) {
   const saveFitting = () => {
     if (!validate()) return;
     
-    // Save minimal data only - preserve shipId from props or ship data
+    // Save minimal data
     const config = {
-      shipId: props.shipId || ship().name, // Use shipId prop or ship name
+      shipId: shipId() || ship().name,
       modules: placedModules().map(m => ({
-        moduleId: m.module.moduleKey, // Use the key (e.g., "Laser1x1")
+        moduleId: m.module.moduleKey,
         col: m.col,
         row: m.row
       }))
     };
     
-    props.onSave?.(config);
+    updateHangar(hangarIndex(), config);
+    navigate('/');
+  };
+
+  const resetFitting = () => {
+    // Reload the initial modules
+    const initial = initialModules();
+    const mods = modules();
+    
+    if (initial.length === 0 || !mods) {
+      setPlacedModules([]);
+      setSelectedModule(null);
+      return;
+    }
+    
+    // Re-hydrate from saved data
+    if (initial[0]?.moduleId) {
+      const hydrated = initial.map(placement => {
+        let foundModule = null;
+        ['weapons', 'defense', 'utility'].forEach(category => {
+          const found = mods[category].find(m => m.moduleKey === placement.moduleId);
+          if (found) foundModule = found;
+        });
+        
+        if (!foundModule) return null;
+        
+        const size = parseSize(foundModule.stats.Size);
+        const category = foundModule.category;
+        let type = 'utility', color = 0xffaa00;
+        
+        if ((category & 1) || (category & 2) || (category & 4)) {
+          type = 'weapon';
+          color = 0xff4444;
+        } else if ((category & 8) || (category & 16)) {
+          type = 'defense';
+          color = 0x4444ff;
+        }
+        
+        return {
+          col: placement.col,
+          row: placement.row,
+          size,
+          type,
+          color,
+          module: foundModule
+        };
+      }).filter(m => m !== null);
+      
+      setPlacedModules(hydrated);
+    } else {
+      setPlacedModules(initial);
+    }
+    setSelectedModule(null);
   };
 
   return (
@@ -419,64 +485,146 @@ export default function FittingScene(props) {
       when={ship() && modules()} 
       fallback={<div style={{ color: 'white', padding: '2rem' }}>Loading ship and modules...</div>}
     >
-    <div style={{ display: 'flex', height: '100vh', padding: '1rem', gap: '1rem', overflow: 'hidden' }}>
-      {/* Left side - Resources */}
-      <div style={{ width: '250px', display: 'flex', 'flex-direction': 'column', 'min-height': 0 }}>
-        <button onClick={props.onBack} style={{
-          'font-size': '20px', background: 'transparent', color: 'white',
-          border: 'none', cursor: 'pointer', 'margin-bottom': '1rem', 'text-align': 'left'
-        }}>
-          &lt; BACK
+    <>
+    <style>{`
+      .module-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .module-scroll {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    `}</style>
+    <div class="fitting-scene" style={{ 
+      display: 'flex', 
+      'flex-direction': 'column',
+      height: '100vh', 
+      background: '#0a0a1a',
+      overflow: 'hidden' 
+    }}>
+      {/* Global Header */}
+      <GlobalHeader player={player()} />
+      
+      {/* Page Title with Save/Reset */}
+      <div style={{
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'center',
+        height: '45px',
+        padding: '0 0.75rem',
+        'border-bottom': '2px solid #003366',
+        'flex-shrink': 0,
+        position: 'relative'
+      }}>
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            position: 'absolute',
+            left: '0.75rem',
+            background: 'transparent',
+            border: 'none',
+            color: '#00aaff',
+            'font-size': '24px',
+            cursor: 'pointer',
+            padding: '0.25rem'
+          }}
+        >
+          ‹
         </button>
-        
-        <h3 style={{ 'font-size': '20px', color: '#00aaff', 'margin-bottom': '0.5rem' }}>
-          {ship().name}
-        </h3>
-        <p style={{ 'font-size': '14px', 'margin-bottom': '0.5rem', color: '#aaaaaa' }}>
-          {ship().class}
-        </p>
-        <p style={{ 'font-size': '14px', 'margin-bottom': '1rem', color: '#ffaa00' }}>
-          Level: {shipLevel()} (Max Module: {maxModuleLevel()})
-        </p>
-        
-        {/* Resources */}
-        <div style={{ 'font-size': '16px', flex: 1, 'min-height': 0 }}>
-          <h3 style={{ 'margin-bottom': '0.5rem', 'font-size': '18px' }}>RESOURCES</h3>
-          <p style={{ 
-            color: resources().powerGen >= resources().power ? '#00ff00' : '#ff0000',
-            'margin-bottom': '0.5rem'
-          }}>
-            Power: {resources().power} / {resources().powerGen}
-          </p>
-
-          <p style={{ 'margin-bottom': '0.5rem' }}>Mass: {resources().mass}</p>
-          <p>Armor: {resources().armor}</p>
+        <h2 style={{ 
+          'font-size': '18px', 
+          color: '#00aaff',
+          margin: 0
+        }}>
+          SHIP FITTING
+        </h2>
+        <div style={{
+          position: 'absolute',
+          right: '0.75rem',
+          display: 'flex',
+          gap: '0.5rem'
+        }}>
+          <button
+            onClick={resetFitting}
+            style={{
+              background: '#663300',
+              border: 'none',
+              color: 'white',
+              'font-size': '16px',
+              width: '32px',
+              height: '32px',
+              'border-radius': '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              'align-items': 'center',
+              'justify-content': 'center'
+            }}
+          >
+            ↻
+          </button>
+          <button
+            onClick={saveFitting}
+            style={{
+              background: '#005500',
+              border: 'none',
+              color: 'white',
+              'font-size': '16px',
+              width: '32px',
+              height: '32px',
+              'border-radius': '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              'align-items': 'center',
+              'justify-content': 'center'
+            }}
+          >
+            ✓
+          </button>
         </div>
-        
-        <button onClick={saveFitting} style={{
-          'margin-top': 'auto', 'font-size': '18px', padding: '12px 20px',
-          background: '#005500', color: 'white', border: 'none',
-          'border-radius': '5px', cursor: 'pointer', width: '100%'
-        }}>
-          SAVE FITTING
-        </button>
       </div>
       
-      {/* Center - Ship Grid */}
-      <div style={{ 
-        flex: 1, 
-        display: 'flex', 
-        'flex-direction': 'column',
-        'align-items': 'center', 
-        'justify-content': 'center',
-        'min-width': 0,
-        'min-height': 0,
-        overflow: 'hidden'
+      {/* Ship Info Bar */}
+      <div style={{
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'space-between',
+        padding: '0.5rem 0.75rem',
+        background: '#001a33',
+        'border-bottom': '1px solid #003366',
+        'flex-shrink': 0
       }}>
-        <h1 style={{ 'font-size': '28px', color: '#00aaff', 'margin-bottom': '1rem' }}>
-          PREPARE YOUR SHIP ({placedModules().length} modules)
-        </h1>
-        
+        <div>
+          <div style={{ 'font-size': '14px', color: 'white', 'font-weight': '500' }}>
+            {ship().name} - {ship().sname}
+          </div>
+          <div style={{ 'font-size': '11px', color: '#aaaaaa', 'margin-top': '2px' }}>
+            Max Module Level: {maxModuleLevel()}
+          </div>
+        </div>
+        <div style={{ 'text-align': 'right', 'font-size': '11px' }}>
+          <div style={{ 
+            color: resources().powerGen >= resources().power ? '#00ff00' : '#ff0000',
+            'font-weight': '500'
+          }}>
+            PWR: {resources().power}/{resources().powerGen}
+          </div>
+          <div style={{ color: '#aaaaaa', 'margin-top': '2px' }}>
+            Mass: {resources().mass} | Armor: {resources().armor}
+          </div>
+        </div>
+      </div>
+      
+      {/* Ship Grid Container */}
+      <div style={{ 
+        flex: 1,
+        display: 'flex',
+        'align-items': 'center',
+        'justify-content': 'center',
+        padding: '0.75rem',
+        'min-height': 0,
+        overflow: 'hidden',
+        position: 'relative'
+      }}>
         {/* Ship Grid - scales to fit */}
         <ShipGrid
           id="ship-grid"
@@ -561,129 +709,132 @@ export default function FittingScene(props) {
         </ShipGrid>
       </div>
       
-      {/* Right side - Module Inventory */}
-      <div style={{ width: '380px', 'overflow-y': 'auto', 'min-height': 0, display: 'flex', 'flex-direction': 'column' }}>
-        <h2 style={{ 'margin-bottom': '0.5rem', 'font-size': '18px' }}>AVAILABLE MODULES</h2>
-        
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: '3px', 'margin-bottom': '0.5rem' }}>
-          <button onClick={() => { 
-            setActiveTab('weapons'); 
-            setActiveSubTab('ballistic');
-            // Auto-select first module
-            const firstModule = availableModules().weapons.find(m => m.category & 1);
-            if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
-          }} style={{
-            flex: 1, padding: '8px', background: activeTab() === 'weapons' ? '#ff4444' : '#003366',
-            color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
-          }}>
-            WEAPONS
-          </button>
-          <button onClick={() => { 
-            setActiveTab('defense'); 
-            setActiveSubTab('armor');
-            // Auto-select first module
-            const firstModule = availableModules().defense.find(m => m.category & 8);
-            if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
-          }} style={{
-            flex: 1, padding: '8px', background: activeTab() === 'defense' ? '#4444ff' : '#003366',
-            color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
-          }}>
-            DEFENSE
-          </button>
-          <button onClick={() => { 
-            setActiveTab('utility'); 
-            setActiveSubTab('reactor');
-            // Auto-select first module
-            const firstModule = availableModules().utility.find(m => m.category & 128);
-            if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
-          }} style={{
-            flex: 1, padding: '8px', background: activeTab() === 'utility' ? '#ffaa00' : '#003366',
-            color: 'white', border: 'none', cursor: 'pointer', 'font-size': '12px'
-          }}>
-            UTILITY
-          </button>
-        </div>
-        
-        {/* Sub-tabs */}
-        <Show when={availableModules()}>
-          <div style={{ display: 'flex', gap: '2px', 'margin-bottom': '0.5rem', 'flex-wrap': 'wrap' }}>
+      {/* Horizontal Module Selector */}
+      <div style={{ 
+        'flex-shrink': 0,
+        'border-top': '2px solid #003366',
+        background: '#0a0a1a',
+        display: 'flex',
+        gap: '0.5rem',
+        padding: '0.75rem'
+      }}>
+        <div 
+          class="module-scroll"
+          style={{ 
+            display: 'flex', 
+            'align-items': 'center',
+            gap: '0.5rem',
+            flex: 1,
+            'overflow-x': menuLevel() === 2 ? 'auto' : 'visible',
+            'overflow-y': 'hidden',
+            '-webkit-overflow-scrolling': 'touch',
+            'scroll-behavior': 'smooth'
+          }}
+        >
+          {/* Level 0: Categories */}
+          <Show when={menuLevel() === 0}>
+            <ModuleCard
+              label="WEAPONS"
+              color="#ff4444"
+              onClick={() => {
+                setActiveTab('weapons');
+                setMenuLevel(1);
+              }}
+            />
+            <ModuleCard
+              label="DEFENSE"
+              color="#4444ff"
+              onClick={() => {
+                setActiveTab('defense');
+                setMenuLevel(1);
+              }}
+            />
+            <ModuleCard
+              label="UTILITY"
+              color="#ffaa00"
+              onClick={() => {
+                setActiveTab('utility');
+                setMenuLevel(1);
+              }}
+            />
+          </Show>
+          
+          {/* Level 1: Subcategories */}
+          <Show when={menuLevel() === 1}>
             <Show when={activeTab() === 'weapons'}>
-              <button onClick={() => {
-                setActiveSubTab('ballistic');
-                const firstModule = availableModules().weapons.find(m => m.category & 1);
-                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'ballistic' ? '#ff6666' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Ballistic</button>
-              <button onClick={() => {
-                setActiveSubTab('laser');
-                const firstModule = availableModules().weapons.find(m => m.category & 4);
-                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'laser' ? '#ff6666' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Laser</button>
-              <button onClick={() => {
-                setActiveSubTab('missile');
-                const firstModule = availableModules().weapons.find(m => m.category & 2);
-                if (firstModule) handleModuleClick(firstModule, 'weapon', 0xff4444);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'missile' ? '#ff6666' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Missile</button>
+              <ModuleCard
+                label="Ballistic"
+                color="#ff6666"
+                onClick={() => {
+                  setActiveSubTab('ballistic');
+                  setMenuLevel(2);
+                }}
+              />
+              <ModuleCard
+                label="Laser"
+                color="#ff6666"
+                onClick={() => {
+                  setActiveSubTab('laser');
+                  setMenuLevel(2);
+                }}
+              />
+              <ModuleCard
+                label="Missile"
+                color="#ff6666"
+                onClick={() => {
+                  setActiveSubTab('missile');
+                  setMenuLevel(2);
+                }}
+              />
             </Show>
             <Show when={activeTab() === 'defense'}>
-              <button onClick={() => {
-                setActiveSubTab('armor');
-                const firstModule = availableModules().defense.find(m => m.category & 8);
-                if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'armor' ? '#6666ff' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Armor</button>
-              <button onClick={() => {
-                setActiveSubTab('shield');
-                const firstModule = availableModules().defense.find(m => m.category & 16);
-                if (firstModule) handleModuleClick(firstModule, 'defense', 0x4444ff);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'shield' ? '#6666ff' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Shield</button>
+              <ModuleCard
+                label="Armor"
+                color="#6666ff"
+                onClick={() => {
+                  setActiveSubTab('armor');
+                  setMenuLevel(2);
+                }}
+              />
+              <ModuleCard
+                label="Shield"
+                color="#6666ff"
+                onClick={() => {
+                  setActiveSubTab('shield');
+                  setMenuLevel(2);
+                }}
+              />
             </Show>
             <Show when={activeTab() === 'utility'}>
-              <button onClick={() => {
-                setActiveSubTab('reactor');
-                const firstModule = availableModules().utility.find(m => m.category & 128);
-                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'reactor' ? '#ffcc66' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Reactor</button>
-              <button onClick={() => {
-                setActiveSubTab('engine');
-                const firstModule = availableModules().utility.find(m => m.category & 64);
-                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'engine' ? '#ffcc66' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Engine</button>
-              <button onClick={() => {
-                setActiveSubTab('support');
-                const firstModule = availableModules().utility.find(m => (m.category & 32) || (m.category & 256));
-                if (firstModule) handleModuleClick(firstModule, 'utility', 0xffaa00);
-              }} style={{
-                padding: '5px 10px', background: activeSubTab() === 'support' ? '#ffcc66' : '#002244',
-                color: 'white', border: 'none', cursor: 'pointer', 'font-size': '11px'
-              }}>Support</button>
+              <ModuleCard
+                label="Reactor"
+                color="#ffcc66"
+                onClick={() => {
+                  setActiveSubTab('reactor');
+                  setMenuLevel(2);
+                }}
+              />
+              <ModuleCard
+                label="Engine"
+                color="#ffcc66"
+                onClick={() => {
+                  setActiveSubTab('engine');
+                  setMenuLevel(2);
+                }}
+              />
+              <ModuleCard
+                label="Support"
+                color="#ffcc66"
+                onClick={() => {
+                  setActiveSubTab('support');
+                  setMenuLevel(2);
+                }}
+              />
             </Show>
-          </div>
-        </Show>
-        
-        {/* Module List */}
-        <Show when={availableModules()}>
-          <div style={{ display: 'flex', 'flex-direction': 'column', gap: '6px' }}>
+          </Show>
+          
+          {/* Level 2: Actual Modules */}
+          <Show when={menuLevel() === 2 && availableModules()}>
             <Show when={activeTab() === 'weapons'}>
               <For each={availableModules().weapons.filter(m => {
                 if (activeSubTab() === 'ballistic') return m.category & 1;
@@ -692,12 +843,13 @@ export default function FittingScene(props) {
                 return false;
               })}>
                 {(module) => (
-                  <ModuleButton 
-                    module={module} 
-                    type="weapon" 
-                    color={0xff4444} 
-                    onClick={handleModuleClick}
+                  <ModuleCard
+                    module={module}
+                    type="weapon"
+                    color={0xff4444}
                     selected={selectedModule()?.module === module}
+                    onClick={() => handleModuleClick(module, 'weapon', 0xff4444)}
+                    onInfo={() => setShowModuleDetails(module)}
                   />
                 )}
               </For>
@@ -709,12 +861,13 @@ export default function FittingScene(props) {
                 return false;
               })}>
                 {(module) => (
-                  <ModuleButton 
-                    module={module} 
-                    type="defense" 
-                    color={0x4444ff} 
-                    onClick={handleModuleClick}
+                  <ModuleCard
+                    module={module}
+                    type="defense"
+                    color={0x4444ff}
                     selected={selectedModule()?.module === module}
+                    onClick={() => handleModuleClick(module, 'defense', 0x4444ff)}
+                    onInfo={() => setShowModuleDetails(module)}
                   />
                 )}
               </For>
@@ -727,27 +880,154 @@ export default function FittingScene(props) {
                 return false;
               })}>
                 {(module) => (
-                  <ModuleButton 
-                    module={module} 
-                    type="utility" 
-                    color={0xffaa00} 
-                    onClick={handleModuleClick}
+                  <ModuleCard
+                    module={module}
+                    type="utility"
+                    color={0xffaa00}
                     selected={selectedModule()?.module === module}
+                    onClick={() => handleModuleClick(module, 'utility', 0xffaa00)}
+                    onInfo={() => setShowModuleDetails(module)}
                   />
                 )}
               </For>
             </Show>
-          </div>
+          </Show>
+        </div>
+
+        
+        {/* Back Button - Fixed on Right */}
+        <Show when={menuLevel() > 0}>
+          <button
+            onClick={() => setMenuLevel(menuLevel() - 1)}
+            style={{
+              'flex-shrink': 0,
+              background: '#003366',
+              border: '2px solid #00aaff',
+              'border-radius': '8px',
+              width: '30px',
+              height: '60px',
+              display: 'flex',
+              'align-items': 'center',
+              'justify-content': 'center',
+              color: '#00aaff',
+              'font-size': '24px',
+              'font-weight': 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            ‹
+          </button>
         </Show>
       </div>
       
-
+      {/* Module Details Modal */}
+      <Show when={showModuleDetails()}>
+        {(module) => (
+          <div
+            onClick={() => setShowModuleDetails(null)}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.8)',
+              display: 'flex',
+              'align-items': 'center',
+              'justify-content': 'center',
+              'z-index': 1000,
+              padding: '1rem'
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: '#001a33',
+                border: '2px solid #00aaff',
+                'border-radius': '12px',
+                padding: '1.5rem',
+                'max-width': '400px',
+                width: '100%',
+                'max-height': '80vh',
+                'overflow-y': 'auto'
+              }}
+            >
+              <h3 style={{ 'font-size': '18px', color: '#00aaff', 'margin-bottom': '1rem' }}>
+                {module().name}
+              </h3>
+              <div style={{ 'font-size': '13px', color: '#aaaaaa', 'line-height': '1.6' }}>
+                <Show when={module().description}>
+                  <p style={{ 'margin-bottom': '1rem' }}>{module().description}</p>
+                </Show>
+                <div style={{ display: 'grid', 'grid-template-columns': '1fr 1fr', gap: '0.5rem' }}>
+                  <For each={Object.entries(module().stats).filter(([k, v]) => v && v !== '0')}>
+                    {([key, value]) => (
+                      <div>
+                        <div style={{ color: '#666', 'font-size': '11px' }}>{key}</div>
+                        <div style={{ color: 'white', 'font-weight': '600' }}>{value}</div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowModuleDetails(null)}
+                style={{
+                  'margin-top': '1.5rem',
+                  width: '100%',
+                  padding: '12px',
+                  background: '#003366',
+                  border: 'none',
+                  'border-radius': '8px',
+                  color: 'white',
+                  'font-size': '14px',
+                  'font-weight': '600',
+                  cursor: 'pointer'
+                }}
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        )}
+      </Show>
     </div>
+    </>
     </Show>
   );
 }
 
-function ModuleButton(props) {
+function ModuleCard(props) {
+  // For category/subcategory cards
+  if (props.label) {
+    return (
+      <button
+        onClick={props.onClick}
+        style={{
+          flex: 1,
+          'flex-shrink': 0,
+          'min-width': '100px',
+          height: '60px',
+          background: props.color,
+          border: '2px solid #00aaff',
+          'border-radius': '8px',
+          color: 'white',
+          'font-size': '14px',
+          'font-weight': '600',
+          cursor: 'pointer',
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'center',
+          'text-align': 'center',
+          padding: '0.5rem'
+        }}
+      >
+        {props.label}
+      </button>
+    );
+  }
+  
+  // For actual module cards
   const size = () => {
     const sizeStr = props.module.stats.Size;
     if (!sizeStr) return { w: 1, h: 1 };
@@ -756,15 +1036,12 @@ function ModuleButton(props) {
   };
 
   const powerValue = () => {
-    const generation = parseInt(props.module.stats['Power Generation'] || props.module.pg || '0');
-    const consumption = parseInt(props.module.stats['Power Use'] || props.module.stats.Power || props.module.pu || '0');
+    const generation = parseInt(props.module.stats['Power Generation'] || '0');
+    const consumption = parseInt(props.module.stats['Power Use'] || props.module.stats.Power || '0');
     const net = generation - consumption;
     
-    if (net > 0) {
-      return `+${net}`;
-    } else if (net < 0) {
-      return `${net}`;
-    }
+    if (net > 0) return `+${net}`;
+    if (net < 0) return `${net}`;
     return null;
   };
 
@@ -772,38 +1049,79 @@ function ModuleButton(props) {
   
   return (
     <button
-      onClick={() => props.onClick(props.module, props.type, props.color)}
+      onClick={props.onClick}
       style={{
-        padding: '8px',
-        background: props.selected ? '#005588' : '#003366',
-        border: props.selected ? '3px solid #00aaff' : '2px solid #0055aa',
-        color: 'white',
-        cursor: 'pointer',
-        'border-radius': '3px',
-        display: 'flex',
-        gap: '8px',
-        'align-items': 'center'
-      }}
-    >
-      <div style={{
-        width: '40px',
-        height: '40px',
         'flex-shrink': 0,
+        width: '60px',
+        height: '60px',
         background: imageUrl ? `url(${imageUrl}) center/contain no-repeat, #${props.color.toString(16).padStart(6, '0')}` : `#${props.color.toString(16).padStart(6, '0')}`,
         'background-size': 'contain',
-        border: '1px solid #00aaff',
-        'border-radius': '3px'
-      }} />
-      <div style={{ flex: 1, 'text-align': 'left' }}>
-        <div style={{ 'font-size': '13px', 'font-weight': 'bold' }}>
-          {props.module.name} ({size().w}x{size().h})
-        </div>
-        <div style={{ 'font-size': '11px', color: '#aaaaaa', 'margin-top': '3px' }}>
-          {props.module.stats.Health && `HP: ${props.module.stats.Health} | `}
-          {props.module.stats.Damage && `DMG: ${props.module.stats.Damage} | `}
-          {powerValue() && `PWR: ${powerValue()}`}
-        </div>
+        border: props.selected ? '3px solid #00aaff' : '2px solid #0055aa',
+        'border-radius': '8px',
+        cursor: 'pointer',
+        position: 'relative',
+        padding: 0
+      }}
+    >
+      {/* Size overlay - bottom left */}
+      <div style={{
+        position: 'absolute',
+        bottom: '4px',
+        left: '4px',
+        background: 'rgba(0, 0, 0, 0.8)',
+        color: 'white',
+        'font-size': '10px',
+        'font-weight': '600',
+        padding: '2px 6px',
+        'border-radius': '4px'
+      }}>
+        {size().w}x{size().h}
       </div>
+      
+      {/* Power overlay - bottom right */}
+      <Show when={powerValue()}>
+        <div style={{
+          position: 'absolute',
+          bottom: '4px',
+          right: '4px',
+          background: 'rgba(0, 0, 0, 0.8)',
+          color: powerValue().startsWith('+') ? '#00ff00' : '#ff0000',
+          'font-size': '10px',
+          'font-weight': '600',
+          padding: '2px 6px',
+          'border-radius': '4px'
+        }}>
+          {powerValue()}
+        </div>
+      </Show>
+      
+      {/* Info icon - top right (only when selected) */}
+      <Show when={props.selected && props.onInfo}>
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onInfo();
+          }}
+          style={{
+            position: 'absolute',
+            top: '4px',
+            right: '4px',
+            background: '#00aaff',
+            color: 'white',
+            width: '20px',
+            height: '20px',
+            'border-radius': '50%',
+            display: 'flex',
+            'align-items': 'center',
+            'justify-content': 'center',
+            'font-size': '12px',
+            'font-weight': 'bold',
+            cursor: 'pointer'
+          }}
+        >
+          i
+        </div>
+      </Show>
     </button>
   );
 }

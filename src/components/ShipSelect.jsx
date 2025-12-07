@@ -1,4 +1,6 @@
 import { createResource, For, Show } from 'solid-js';
+import { useNavigate, useParams } from '@solidjs/router';
+import { useGameState } from '../contexts/GameStateContext';
 import GlobalHeader from './GlobalHeader';
 import PageTitle from './PageTitle';
 
@@ -37,8 +39,24 @@ async function fetchShips() {
     .sort((a, b) => a.unlockLevel - b.unlockLevel);
 }
 
-export default function ShipSelect(props) {
+export default function ShipSelect() {
+  const navigate = useNavigate();
+  const params = useParams();
+  const { gameState, updateHangar } = useGameState();
+  
+  const hangarIndex = () => parseInt(params.hangarIndex);
+  const player = () => gameState().player;
+  
   const [ships] = createResource(fetchShips);
+  
+  const handleShipSelected = (ship) => {
+    const config = {
+      shipId: ship.id,
+      modules: []
+    };
+    updateHangar(hangarIndex(), config);
+    navigate(`/fitting/${hangarIndex()}`);
+  };
 
   return (
     <div class="ship-select" style={{
@@ -47,8 +65,8 @@ export default function ShipSelect(props) {
       height: '100vh',
       background: '#0a0a1a'
     }}>
-      <GlobalHeader player={props.player} />
-      <PageTitle title="Select Ship" onBack={props.onBack} />
+      <GlobalHeader player={player()} />
+      <PageTitle title="Select Ship" onBack={() => navigate('/')} />
       
       {/* Ship List */}
       <div style={{
@@ -67,7 +85,7 @@ export default function ShipSelect(props) {
           <For each={ships()}>
             {(ship) => (
               <button
-                onClick={() => props.onSelect?.(ship)}
+                onClick={() => handleShipSelected(ship)}
                 style={{
                   display: 'flex',
                   'align-items': 'center',

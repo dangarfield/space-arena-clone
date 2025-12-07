@@ -1,4 +1,6 @@
 import { createSignal, createEffect, createResource, For, Show } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
+import { useGameState } from '../contexts/GameStateContext';
 import GlobalHeader from './GlobalHeader';
 import MainNav from './MainNav';
 import HangarSlotsNav from './HangarSlotsNav';
@@ -8,6 +10,8 @@ import ResearchPage from './ResearchPage';
 import LeaderboardPage from './LeaderboardPage';
 import ShopPage from './ShopPage';
 import SettingsPage from './SettingsPage';
+import GameModePage from './GameModePage';
+import DatabasePage from './DatabasePage';
 import HangarManagement from './HangarManagement';
 
 async function fetchShip(shipId) {
@@ -24,25 +28,28 @@ async function fetchModules() {
   return { modulesData, localization };
 }
 
-export default function HangarHub(props) {
+export default function HangarHub() {
+  const navigate = useNavigate();
+  const { gameState, setActiveHangar: setActiveHangarInState, updateHangar } = useGameState();
+  
   const [activePage, setActivePage] = createSignal('hangar');
-  const [activeHangar, setActiveHangar] = createSignal(props.initialActiveHangar ?? 0);
   const [gridReady, setGridReady] = createSignal(false);
   const [touchStart, setTouchStart] = createSignal(null);
   const [showManagement, setShowManagement] = createSignal(false);
   
-  const hangars = () => props.hangars || [null, null, null, null, null];
+  const hangars = () => gameState().hangars;
+  const activeHangar = () => gameState().activeHangar;
   const currentHangar = () => hangars()[activeHangar()];
+  const player = () => gameState().player;
   
   // Load ship data for current hangar
   const shipId = () => currentHangar()?.shipId || null;
   const [ship] = createResource(shipId, fetchShip);
   const [modulesLib] = createResource(fetchModules);
   
-  // Notify parent when active hangar changes
+  // Handle hangar changes
   const handleHangarChange = (index) => {
-    setActiveHangar(index);
-    props.onActiveHangarChange?.(index);
+    setActiveHangarInState(index);
   };
   
   // Hydrate modules for display
@@ -94,24 +101,16 @@ export default function HangarHub(props) {
 
   const handleGoToFitting = () => {
     if (currentHangar()) {
-      props.onGoToFitting?.(activeHangar(), currentHangar());
+      navigate(`/fitting/${activeHangar()}`);
     } else {
-      props.onSelectShip?.(activeHangar());
+      navigate(`/ship-select/${activeHangar()}`);
     }
   };
 
   const handleGoToBattle = () => {
     const hangar = currentHangar();
     if (hangar && ship()) {
-      const minimalConfig = {
-        shipId: ship().name,
-        modules: hangar.modules.map(m => ({
-          moduleId: m.moduleId,
-          col: m.col,
-          row: m.row
-        }))
-      };
-      props.onGoToBattle?.(minimalConfig);
+      navigate('/battle');
     }
   };
   
@@ -166,7 +165,7 @@ export default function HangarHub(props) {
     }}>
       {/* Global Header */}
       <GlobalHeader 
-        player={props.player}
+        player={player()}
         onSettings={() => setActivePage('settings')}
         onShop={() => setActivePage('shop')}
       />
@@ -289,7 +288,7 @@ export default function HangarHub(props) {
             
             <Show when={currentHangar() && ship()} fallback={
               <div 
-                onClick={() => props.onSelectShip?.(activeHangar())}
+                onClick={() => navigate(`/ship-select/${activeHangar()}`)}
                 style={{ 
                   'text-align': 'center', 
                   color: '#666',
@@ -388,6 +387,7 @@ export default function HangarHub(props) {
           <BottomNav 
             gameMode="Career"
             battleReady={isBattleReady()}
+            onGameModeClick={() => setActivePage('gamemode')}
             onBattleClick={handleGoToBattle}
           />
         </div>
@@ -409,6 +409,28 @@ export default function HangarHub(props) {
         <SettingsPage />
       </Show>
       
+      {/* Game Mode Overlay */}
+      <Show when={activePage() === 'gamemode'}>
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: '#0a0a1a',
+          'z-index': 1000
+        }}>
+          <GameModePage
+            player={player()}
+            onBack={() => setActivePage('hangar')}
+          />
+        </div>
+      </Show>
+      
+      <Show when={activePage() === 'database'}>
+        <DatabasePage />
+      </Show>
+      
       {/* Hangar Management Overlay */}
       <Show when={showManagement()}>
         <div style={{
@@ -423,20 +445,20 @@ export default function HangarHub(props) {
           'flex-direction': 'column'
         }}>
           <HangarManagement
-            player={props.player}
+            player={player()}
             hangars={hangars()}
             onClose={() => setShowManagement(false)}
             onEdit={(index) => {
               setShowManagement(false);
               handleHangarChange(index);
-              props.onGoToFitting?.(index, hangars()[index]);
+              navigate(`/fitting/${index}`);
             }}
             onDelete={(index) => {
-              props.onClearHangar?.(index);
+              updateHangar(index, null);
             }}
             onSelectShip={(index) => {
               setShowManagement(false);
-              props.onSelectShip?.(index);
+              navigate(`/ship-select/${index}`);
             }}
           />
         </div>

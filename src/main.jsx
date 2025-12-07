@@ -1,4 +1,15 @@
 import { render } from 'solid-js/web';
+import { Router } from '@solidjs/router';
+import { GameStateProvider } from './contexts/GameStateContext';
 import App from './App';
 
-render(() => <App />, document.getElementById('root'));
+render(
+  () => (
+    <GameStateProvider>
+      <Router>
+        <App />
+      </Router>
+    </GameStateProvider>
+  ),
+  document.getElementById('root')
+);
