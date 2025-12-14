@@ -33,3 +33,7 @@
   - Visual indication of offline modules (greyed out, different tint)
   - Potentially allow player to set power priorities in fitting scene
   - Re-enable modules if power becomes available again (reactor repaired, modules destroyed)
+
+
+Note: Can encorporate some elements from https://www.crazygames.com/game/space-box-battle-arena too
+

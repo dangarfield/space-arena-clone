@@ -10,8 +10,10 @@
     "convert": "node convert-to-json.js",
     "validate-ships": "node validate-ships.js",
     "build-data": "node scripts/build-data.cjs",
-    "dev": "vite",
-    "build": "vite build"
+    "dev": "netlify dev",
+    "dev:vite": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@solidjs/router": "^0.15.4",
@@ -23,6 +25,7 @@
     "vite-plugin-solid": "^2.11.10"
   },
   "devDependencies": {
+    "netlify-cli": "^23.12.3",
     "vite": "^5.0.0"
   }
 }

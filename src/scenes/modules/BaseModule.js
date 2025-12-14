@@ -50,12 +50,14 @@ export default class BaseModule {
         if (this.sprite && this.scene.textures.exists(this.name)) {
           this.sprite.setTexture(this.name);
           this.sprite.setDisplaySize(width, height);
+          this.sprite.setAlpha(1); // Ensure full opacity after texture load
         }
       });
       this.scene.load.start();
       
-      // Set initial size
+      // Set initial size and opacity
       this.sprite.setDisplaySize(width, height);
+      this.sprite.setAlpha(1); // Ensure full opacity from start
     } else {
       this.sprite = this.scene.add.rectangle(x, y, width, height, this.color);
     }

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import ModuleFactory from './modules/ModuleFactory.js';
+import ShipFactory from './ShipFactory.js';
 import WeaponModule from './modules/WeaponModule.js';
 import EngineModule from './modules/EngineModule.js';
 import WarpModule from './modules/WarpModule.js';
@@ -21,6 +21,10 @@ export default class BattleScene extends Phaser.Scene {
     // Store visual config
     this.visualConfig = visualEffectsConfig;
     
+    // Always create placeholder texture for modules
+    this.load.image('module-placeholder', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    
+    // Full asset loading for battle mode
     // Preload starfield background images
     if (this.visualConfig.starfield?.backgroundImages) {
       this.visualConfig.starfield.backgroundImages.forEach((path, index) => {
@@ -90,14 +94,91 @@ export default class BattleScene extends Phaser.Scene {
       onBack: data.onBack,
       onVictory: data.onVictory
     };
+    
+    // Fitting mode configuration
+    this.fittingMode = data.fittingMode || false;
+    this.onModuleClick = data.onModuleClick;
+    this.onCellClick = data.onCellClick;
+    this.selectedModule = data.selectedModule;
+    this.showFiringCones = data.showFiringCones ?? true;
+    this.showShieldRadius = data.showShieldRadius ?? true;
+    this.showPDRadius = data.showPDRadius ?? true;
   }
 
   async create() {
-    console.log('BattleScene create() called');
-    console.log('Player config (raw):', this.playerConfig);
-    console.log('Enemy config (raw):', this.enemyConfig);
+    console.log('BattleScene create() called, fitting mode:', this.fittingMode);
     
-    // ALWAYS hydrate both configs - they should be minimal format
+    // Arena setup
+    this.cameras.main.setBackgroundColor('#0a0a1a');
+    
+    if (this.fittingMode) {
+      // Fitting mode - single ship setup
+      await this.createFittingMode();
+    } else {
+      // Battle mode - dual ship setup
+      await this.createBattleMode();
+    }
+    
+    // Create parallax starfield (both modes)
+    this.createStarfield();
+    
+    // Frame counter for periodic logging
+    this.frameCount = 0;
+    
+    // Setup GUI (battle mode only)
+    if (!this.fittingMode) {
+      this.setupGUI();
+    }
+  }
+  
+  async createFittingMode() {
+    // Hydrate player config only
+    if (!this.playerConfig || !this.playerConfig.shipId) {
+      console.error('Invalid player config for fitting mode:', this.playerConfig);
+      return;
+    }
+    
+    this.playerConfig = await hydrateShipConfig(this.playerConfig);
+    
+    // Create single ship at center
+    this.playerShip = ShipFactory.createBattleShip(this, this.playerConfig, { x: 0, y: 0 }, 0);
+    this.ship = this.playerShip; // Alias for fitting scene compatibility
+    
+    // Initialize minimal systems for fitting
+    this.projectiles = [];
+    this.pdProjectiles = [];
+    this.activeBeams = [];
+    this.effects = [];
+    this.junkPieces = [];
+    this.mines = [];
+    this.battleEnded = false;
+    
+    // Setup fitting interactions
+    this.setupFittingInteractions();
+    
+    // Center camera on ship and calculate appropriate zoom
+    this.cameras.main.centerOn(0, 0);
+    
+    // Calculate zoom based on ship size and screen dimensions
+    const shipData = this.playerConfig.ship;
+    const shipWidth = shipData.w || 6;
+    const shipHeight = shipData.h || 5;
+    
+    // Add padding around the ship
+    const padding = 4;
+    const requiredWidth = shipWidth + padding;
+    const requiredHeight = shipHeight + padding;
+    
+    // Calculate zoom to fit ship with padding
+    const zoomX = this.cameras.main.width / requiredWidth;
+    const zoomY = this.cameras.main.height / requiredHeight;
+    const optimalZoom = Math.min(zoomX, zoomY);
+    
+    this.cameras.main.setZoom(optimalZoom);
+  }
+  
+  async createBattleMode() {
+    // Validate configs
     if (!this.playerConfig || !this.playerConfig.shipId || !this.playerConfig.modules) {
       console.error('Invalid player config format. Expected {shipId, modules}:', this.playerConfig);
       return;
@@ -109,26 +190,13 @@ export default class BattleScene extends Phaser.Scene {
     }
     
     // Hydrate both configs
-    console.log('Hydrating player config...');
     this.playerConfig = await hydrateShipConfig(this.playerConfig);
-    console.log('Hydrating enemy config...');
     this.enemyConfig = await hydrateShipConfig(this.enemyConfig);
-    
-    console.log('Player config hydrated:', this.playerConfig.modules.length, 'modules');
-    console.log('Enemy config hydrated:', this.enemyConfig.modules.length, 'modules');
-    
-    // Arena setup
-    this.cameras.main.setBackgroundColor('#0a0a1a');
     
     // Create ships - player pointing right, enemy pointing left (facing each other)
     // Start far apart so they approach each other
-    this.playerShip = this.createBattleShip(this.playerConfig, { x: -50, y: 0 }, 0);
-    this.enemyShip = this.createBattleShip(this.enemyConfig, { x: 50, y: 0 }, Math.PI);
-    
-    console.log('Player ship created:', this.playerShip);
-    console.log('Player modules:', this.playerShip.modules.length);
-    console.log('Enemy ship created:', this.enemyShip);
-    console.log('Enemy modules:', this.enemyShip.modules.length);
+    this.playerShip = ShipFactory.createBattleShip(this, this.playerConfig, { x: -50, y: 0 }, 0);
+    this.enemyShip = ShipFactory.createBattleShip(this, this.enemyConfig, { x: 50, y: 0 }, Math.PI);
     
     // Initialize systems
     this.projectiles = [];
@@ -138,12 +206,6 @@ export default class BattleScene extends Phaser.Scene {
     this.junkPieces = [];
     this.mines = [];
     this.battleEnded = false;
-    
-    // Camera - no bounds, allow free movement
-    // this.cameras.main.setBounds(0, 0, 1200, 800);
-    
-    // Create parallax starfield
-    this.createStarfield();
     
     // Direction indicators (added to containers) - point up in local space
     this.playerDirection = this.add.graphics({ lineStyle: { width: 0.3, color: 0x4444ff } });
@@ -155,12 +217,6 @@ export default class BattleScene extends Phaser.Scene {
     this.enemyDirection.lineBetween(0, 0, 0, -100); // Point up in local space
     this.enemyDirection.setVisible(false); // Start hidden
     this.enemyShip.container.add(this.enemyDirection);
-    
-    // Frame counter for periodic logging
-    this.frameCount = 0;
-    
-    // Setup GUI
-    this.setupGUI();
   }
   
   createStarfield() {
@@ -368,105 +424,42 @@ export default class BattleScene extends Phaser.Scene {
 
 
 
-  createBattleShip(config, position, rotation) {
-    // Create container for all ship modules
-    const container = this.add.container(position.x, position.y);
-    container.setRotation(rotation);
-    
-    const ship = {
-      config: config,
-      pos: position,
-      rotation: rotation,
-      velocity: { x: 0, y: 0 },
-      modules: [],
-      container: container,
-      destroyed: false,
-      speedMultiplier: 1,
-      thrustMultiplier: 1
-    };
-    
-    console.log('=== Creating ship ===');
-    
-    // Create module instances using factory
-    config.modules.forEach((moduleConfig, index) => {
-      const module = ModuleFactory.createModule(moduleConfig, ship, this);
-      
-      // Calculate position relative to ship center (not world position)
-      const localPos = this.gridToLocal(module.col, module.row, module.size, ship);
-      module.createSprite(localPos.x, localPos.y, 0, CELL_SIZE); // rotation 0 since container handles it
-      module.updateLocalPosition(localPos);
-      
-      // Create weapon/shield/PD visuals if applicable
-      if (module.createVisuals) {
-        module.createVisuals(localPos.x, localPos.y);
-        if (module.rangeGraphics) container.add(module.rangeGraphics);
-        if (module.shieldGraphics) container.add(module.shieldGraphics);
-        if (module.pdGraphics) container.add(module.pdGraphics);
-      }
-      
-      // Add sprites to container
-      if (module.healthCell) container.add(module.healthCell);
-      if (module.sprite) container.add(module.sprite);
-      
-      ship.modules.push(module);
-    });
-    
-    // Count module types
-    const weapons = ship.modules.filter(m => m instanceof WeaponModule);
-    const engines = ship.modules.filter(m => m instanceof EngineModule);
-    const shields = ship.modules.filter(m => m.constructor.name === 'ShieldModule');
-    
-    console.log(`Ship created: ${ship.modules.length} modules (${weapons.length} weapons, ${engines.length} engines, ${shields.length} shields)`);
-    weapons.forEach(w => console.log(`  Weapon: fc=${w.fireCone}, rng=${w.range}`));
-    shields.forEach(s => console.log(`  Shield: radius=${s.shieldRadius}`));
-    
-    return ship;
-  }
-
   gridToLocal(col, row, moduleSize, ship) {
-    // Convert grid coordinates to local position relative to ship center
-    const shipData = ship.config.ship;
-    const gridWidth = shipData.w || 6;
-    const gridHeight = shipData.h || 5;
-    
-    // Ship grid is designed pointing "up" (row 0 at top)
-    // col, row is the top-left corner of the module in grid space
-    // Calculate center of module in grid space
-    const moduleCenterCol = col + moduleSize.w / 2;
-    const moduleCenterRow = row + moduleSize.h / 2;
-    
-    // Keep natural orientation - ships point up
-    const offsetX = (moduleCenterCol - gridWidth / 2) * CELL_SIZE;
-    const offsetY = (moduleCenterRow - gridHeight / 2) * CELL_SIZE;
-    
-    return { x: offsetX, y: offsetY };
+    return ShipFactory.gridToLocal(col, row, moduleSize, ship);
   }
   
   gridToWorld(col, row, moduleSize, ship) {
-    if (!ship || !ship.config) {
-      console.error('gridToWorld called with invalid ship:', ship);
-      return { x: 0, y: 0 };
-    }
-    // Get local position then transform to world
-    const local = this.gridToLocal(col, row, moduleSize, ship);
-    
-    // Rotate based on ship rotation
-    // Local space has ships pointing up (-90° in Phaser coords), so add PI/2 to align
-    const actualRotation = ship.rotation + Math.PI / 2;
-    const cos = Math.cos(actualRotation);
-    const sin = Math.sin(actualRotation);
-    
-    const rotatedX = local.x * cos - local.y * sin;
-    const rotatedY = local.x * sin + local.y * cos;
-    
-    return {
-      x: ship.pos.x + rotatedX,
-      y: ship.pos.y + rotatedY
-    };
+    return ShipFactory.gridToWorld(col, row, moduleSize, ship);
   }
 
   update(time, delta) {
     let dt = delta / 1000; // Convert to seconds
+    
+    // Skip battle logic in fitting mode
+    if (this.fittingMode) {
+      // Update starfield in fitting mode
+      if (this.starLayers) {
+        const cam = this.cameras.main;
+        const centerX = 0; // Ship is at center in fitting mode
+        const centerY = 0;
+        
+        if (!this.initialCameraState) {
+          this.initialCameraState = { x: centerX, y: centerY };
+        }
+        
+        const cameraDeltaX = centerX - this.initialCameraState.x;
+        const cameraDeltaY = centerY - this.initialCameraState.y;
+        
+        this.starLayers.forEach(layer => {
+          layer.tileSprite.setPosition(centerX, centerY);
+          const inverseZoom = 1 / cam.zoom;
+          layer.tileSprite.setScale(inverseZoom);
+          layer.tileSprite.tilePositionX = cameraDeltaX * layer.parallaxFactor;
+          layer.tileSprite.tilePositionY = cameraDeltaY * layer.parallaxFactor;
+        });
+      }
+      return;
+    }
     
     // Apply time scale (only if debugSettings exists)
     if (this.debugSettings) {
@@ -1050,6 +1043,13 @@ export default class BattleScene extends Phaser.Scene {
     
     this.activeBeams = this.activeBeams.filter(beamData => {
       const { beam, sourceModule, targetModule, targetShip, damageInterval } = beamData;
+      
+      // Safety check for null objects
+      if (!sourceModule || !targetModule || !beam) {
+        if (beam) beam.destroy();
+        if (damageInterval) damageInterval.remove();
+        return false;
+      }
       
       // If source module destroyed, stop beam immediately
       if (!sourceModule.alive) {
@@ -1665,5 +1665,326 @@ export default class BattleScene extends Phaser.Scene {
       this.gui.destroy();
       this.gui = null;
     }
+  }
+  
+  // ===== FITTING MODE METHODS =====
+  
+  setupFittingInteractions() {
+    // Make modules interactive for removal
+    this.playerShip.modules.forEach(module => {
+      if (module.sprite) {
+        module.sprite.setInteractive();
+        module.sprite.moduleData = { col: module.col, row: module.row };
+        module.sprite.moduleRef = module;
+      }
+    });
+    
+    // Module clicks take priority
+    this.input.on('gameobjectdown', (pointer, gameObject) => {
+      if (gameObject.moduleData) {
+        this.onModuleClick?.(gameObject.moduleData);
+        pointer.event.stopPropagation();
+      }
+    });
+    
+    // Grid cell clicks for placement
+    this.input.on('pointerdown', (pointer) => {
+      if (!this.playerShip) return;
+      
+      // Check if we clicked on a module sprite
+      const objectsAtPointer = this.input.hitTestPointer(pointer);
+      if (objectsAtPointer.some(obj => obj.moduleData)) {
+        this.hoverCell = null;
+        this.drawFittingOverlays();
+        return;
+      }
+      
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const shipData = this.playerShip.config.ship;
+      const gridWidth = shipData.w;
+      const gridHeight = shipData.h;
+      
+      // Convert world to local (relative to ship center)
+      const localX = worldPoint.x - this.playerShip.pos.x;
+      const localY = worldPoint.y - this.playerShip.pos.y;
+      
+      // Get display coordinates
+      const col = Math.floor(localX + gridWidth / 2);
+      const row = Math.floor(localY + gridHeight / 2);
+      
+      if (col >= 0 && col < gridWidth && row >= 0 && row < gridHeight) {
+        this.onCellClick?.(col, row);
+        this.hoverCell = null;
+        this.drawFittingOverlays();
+      }
+    });
+    
+    // Hover preview
+    this.input.on('pointermove', (pointer) => {
+      if (!this.playerShip || !this.selectedModule) {
+        if (this.hoverCell) {
+          this.hoverCell = null;
+          this.drawFittingOverlays();
+        }
+        return;
+      }
+      
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const shipData = this.playerShip.config.ship;
+      const gridWidth = shipData.w;
+      const gridHeight = shipData.h;
+      
+      const localX = worldPoint.x - this.playerShip.pos.x;
+      const localY = worldPoint.y - this.playerShip.pos.y;
+      
+      const col = Math.floor(localX + gridWidth / 2);
+      const row = Math.floor(localY + gridHeight / 2);
+      
+      this.hoverCell = { col, row };
+      this.drawFittingOverlays();
+    });
+    
+    // Draw grid and initial overlays
+    this.drawFittingGrid();
+    this.drawFittingOverlays();
+  }
+  
+  drawFittingGrid() {
+    const shipData = this.playerShip.config.ship;
+    const gridWidth = shipData.w;
+    const gridHeight = shipData.h;
+    
+    this.gridGraphics = this.add.graphics();
+    this.playerShip.container.add(this.gridGraphics);
+    
+    // Convert g to shape (same as FittingPreviewScene)
+    const shape = [];
+    for (let row = gridHeight - 1; row >= 0; row--) {
+      const rowCells = [];
+      for (let col = gridWidth - 1; col >= 0; col--) {
+        rowCells.push(shipData.g[row * gridWidth + col]);
+      }
+      shape.push(rowCells);
+    }
+    
+    // Draw grid cells
+    for (let row = 0; row < gridHeight; row++) {
+      for (let col = 0; col < gridWidth; col++) {
+        const cellType = shape[row][col];
+        if (cellType === 0) continue;
+        
+        const x = (col - gridWidth / 2);
+        const y = (row - gridHeight / 2);
+        
+        const isEngine = cellType === 4 || cellType === 5;
+        const color = isEngine ? 0x663300 : 0x003366;
+        
+        this.gridGraphics.fillStyle(color, 0.3);
+        this.gridGraphics.fillRect(x, y, 1, 1);
+        this.gridGraphics.lineStyle(0.05, 0x00aaff, 0.5);
+        this.gridGraphics.strokeRect(x, y, 1, 1);
+      }
+    }
+  }
+  
+  drawFittingOverlays() {
+    if (!this.playerShip) return;
+    
+    // Clear existing overlays
+    if (this.overlayGraphics) {
+      this.overlayGraphics.destroy();
+    }
+    
+    this.overlayGraphics = this.add.graphics();
+    this.playerShip.container.add(this.overlayGraphics);
+    
+    // Draw hover preview
+    if (this.hoverCell && this.selectedModule) {
+      const { col, row } = this.hoverCell;
+      const w = this.selectedModule.w || 1;
+      const h = this.selectedModule.h || 1;
+      
+      const shipData = this.playerShip.config.ship;
+      const gridWidth = shipData.w;
+      const gridHeight = shipData.h;
+      
+      // Check if over ship
+      let overShipCell = false;
+      for (let r = row; r < row + h; r++) {
+        for (let c = col; c < col + w; c++) {
+          if (c >= 0 && c < gridWidth && r >= 0 && r < gridHeight) {
+            overShipCell = true;
+            break;
+          }
+        }
+        if (overShipCell) break;
+      }
+      
+      if (!overShipCell) return;
+      
+      const canPlace = this.canPlaceModuleAt(col, row, w, h, (this.selectedModule.category & 64) !== 0);
+      const color = canPlace ? 0x00ff00 : 0xff0000;
+      
+      const x = (col - gridWidth / 2);
+      const y = (row - gridHeight / 2);
+      
+      this.overlayGraphics.fillStyle(color, 0.3);
+      this.overlayGraphics.fillRect(x, y, w, h);
+      this.overlayGraphics.lineStyle(0.1, color, 1);
+      this.overlayGraphics.strokeRect(x, y, w, h);
+    }
+  }
+  
+  canPlaceModuleAt(col, row, w, h, isEngine) {
+    const shipData = this.playerShip.config.ship;
+    const gridWidth = shipData.w;
+    const gridHeight = shipData.h;
+    
+    // Convert g to shape
+    const shape = [];
+    for (let r = gridHeight - 1; r >= 0; r--) {
+      const rowCells = [];
+      for (let c = gridWidth - 1; c >= 0; c--) {
+        rowCells.push(shipData.g[r * gridWidth + c]);
+      }
+      shape.push(rowCells);
+    }
+    
+    // Check bounds
+    if (col < 0 || row < 0 || col + w > gridWidth || row + h > gridHeight) {
+      return false;
+    }
+    
+    // Check cell types and overlaps
+    for (let r = row; r < row + h; r++) {
+      for (let c = col; c < col + w; c++) {
+        const cellType = shape[r][c];
+        
+        if (cellType === 0) return false;
+        
+        if (isEngine) {
+          if (cellType !== 4 && cellType !== 5) return false;
+        } else {
+          if (cellType !== 1 && cellType !== 2 && cellType !== 3 && cellType !== 5) return false;
+        }
+        
+        // Check overlaps
+        const overlap = this.playerShip.modules.some(m => {
+          const mw = m.size.w || 1;
+          const mh = m.size.h || 1;
+          return !(c >= m.col + mw || c + 1 <= m.col || r >= m.row + mh || r + 1 <= m.row);
+        });
+        
+        if (overlap) return false;
+      }
+    }
+    
+    return true;
+  }
+  
+  async updateShipConfig(newConfig) {
+    if (!this.fittingMode) return;
+    
+    // Find differences
+    const oldModules = this.playerConfig.modules || [];
+    const newModules = newConfig.modules || [];
+    
+    const toRemove = oldModules.filter(old => 
+      !newModules.some(n => n.col === old.col && n.row === old.row && n.moduleId === old.moduleId)
+    );
+    
+    const toAdd = newModules.filter(n =>
+      !oldModules.some(old => old.col === n.col && old.row === n.row && old.moduleId === n.moduleId)
+    );
+    
+
+    
+    // Remove modules
+    toRemove.forEach(m => this.removeFittingModule(m.col, m.row));
+    
+    // Add modules
+    for (const m of toAdd) {
+      await this.addFittingModule(m.moduleId, m.col, m.row);
+    }
+    
+    // Update config
+    this.playerConfig = newConfig;
+    
+    // Redraw overlays
+    this.drawFittingOverlays();
+  }
+  
+  async addFittingModule(moduleId, col, row) {
+    // Load module data (same as FittingPreviewScene)
+    const [modulesData, localization] = await Promise.all([
+      fetch('/data/modules.json').then(r => r.json()),
+      fetch('/data/module-localisation.json').then(r => r.json())
+    ]);
+    
+    const rawModule = modulesData[moduleId];
+    if (!rawModule) return;
+    
+    const loc = localization.en || {};
+    const displayName = loc[rawModule.name] || rawModule.name;
+    const imageName = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    
+    const moduleData = {
+      ...rawModule,
+      key: moduleId,
+      name: displayName,
+      image: `/images/modules/${imageName}.webp`
+    };
+    
+    const placement = { 
+      col, 
+      row, 
+      module: moduleData,
+      size: { w: rawModule.w, h: rawModule.h }
+    };
+    
+    // Create module using existing factory
+    const ModuleFactory = (await import('./modules/ModuleFactory.js')).default;
+    const module = ModuleFactory.createModule(placement, this.playerShip, this);
+    
+    const localPos = ShipFactory.gridToLocal(col, row, { w: rawModule.w, h: rawModule.h }, this.playerShip);
+    module.createSprite(localPos.x, localPos.y, 0, 1);
+    module.updateLocalPosition(localPos);
+    
+    if (module.createVisuals) {
+      module.createVisuals(localPos.x, localPos.y);
+      if (module.rangeGraphics) this.playerShip.container.add(module.rangeGraphics);
+      if (module.shieldGraphics) this.playerShip.container.add(module.shieldGraphics);
+      if (module.pdGraphics) this.playerShip.container.add(module.pdGraphics);
+    }
+    
+    if (module.healthCell) this.playerShip.container.add(module.healthCell);
+    if (module.sprite) this.playerShip.container.add(module.sprite);
+    
+    module.col = col;
+    module.row = row;
+    
+    if (module.sprite) {
+      module.sprite.setInteractive();
+      module.sprite.moduleData = { col, row };
+      module.sprite.moduleRef = module;
+    }
+    
+    this.playerShip.modules.push(module);
+  }
+  
+  removeFittingModule(col, row) {
+    const moduleIndex = this.playerShip.modules.findIndex(m => m.col === col && m.row === row);
+    if (moduleIndex === -1) return;
+    
+    const module = this.playerShip.modules[moduleIndex];
+    
+    // Destroy visuals
+    if (module.sprite) module.sprite.destroy();
+    if (module.healthCell) module.healthCell.destroy();
+    if (module.rangeGraphics) module.rangeGraphics.destroy();
+    if (module.shieldGraphics) module.shieldGraphics.destroy();
+    if (module.pdGraphics) module.pdGraphics.destroy();
+    
+    this.playerShip.modules.splice(moduleIndex, 1);
   }
 }

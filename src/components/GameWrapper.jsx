@@ -9,9 +9,10 @@ export default function GameWrapper() {
   const { gameState } = useGameState();
   
   const hangars = () => gameState().hangars;
+  const activeHangar = () => gameState().activeHangar;
   const shipConfig = () => ({
-    player: hangars()[0],
-    enemy: hangars()[1]
+    player: hangars()[activeHangar()],
+    enemy: hangars()[1] // Keep enemy as hangar 1 for now, or could be a different logic
   });
   let gameContainer;
   let game;

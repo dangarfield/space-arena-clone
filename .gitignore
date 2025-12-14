@@ -38,3 +38,6 @@ pnpm-debug.log*
 docs
 scripts
 downloaded-assets
+
+# Local Netlify folder
+.netlify
