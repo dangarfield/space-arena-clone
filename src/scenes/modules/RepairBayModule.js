@@ -15,7 +15,7 @@ export default class RepairBayModule extends BaseModule {
   }
   
   update(dt) {
-    if (!this.alive || this.remainingCapacity <= 0) return;
+    if (!this.alive || this.powered === false || this.remainingCapacity <= 0) return;
     
     this.repairTimer += dt;
     

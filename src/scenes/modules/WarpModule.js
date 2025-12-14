@@ -11,7 +11,7 @@ export default class WarpModule extends BaseModule {
   }
   
   getWarpPower() {
-    return this.alive ? this.warpPower : 0;
+    return (this.alive && this.powered !== false) ? this.warpPower : 0;
   }
   
   update(dt) {

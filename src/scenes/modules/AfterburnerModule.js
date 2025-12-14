@@ -25,6 +25,12 @@ export default class AfterburnerModule extends BaseModule {
       return;
     }
     
+    // Deactivate if power is lost
+    if (this.powered === false && this.isActive) {
+      this.deactivate();
+      return;
+    }
+    
     if (this.isActive) {
       this.activeTimer -= dt;
       
@@ -37,7 +43,7 @@ export default class AfterburnerModule extends BaseModule {
   }
   
   canActivate() {
-    return this.alive && !this.isActive && this.cooldownTimer <= 0;
+    return this.alive && this.powered !== false && !this.isActive && this.cooldownTimer <= 0;
   }
   
   activate() {

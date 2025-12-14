@@ -16,10 +16,10 @@ export default class EngineModule extends BaseModule {
   }
   
   getThrustContribution() {
-    return this.alive ? this.thrustPower : 0;
+    return (this.alive && this.powered !== false) ? this.thrustPower : 0;
   }
   
   getTurnContribution() {
-    return this.alive ? this.turnPower : 0;
+    return (this.alive && this.powered !== false) ? this.turnPower : 0;
   }
 }

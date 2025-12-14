@@ -75,6 +75,12 @@ export default class BaseModule {
     this.cellHeight = height;
     
     this.updateHealthCell();
+    
+    // Initialize power overlay state
+    this.powerOverlay = null;
+    
+    // Check if power overlay should be shown initially
+    this.updatePowerOverlay();
   }
   
   updateLocalPosition(localPos) {
@@ -85,6 +91,9 @@ export default class BaseModule {
     }
     if (this.healthCell) {
       this.healthCell.setPosition(localPos.x, localPos.y);
+    }
+    if (this.powerOverlay) {
+      this.powerOverlay.setPosition(localPos.x, localPos.y);
     }
   }
   
@@ -187,6 +196,9 @@ export default class BaseModule {
     if (healthPercent <= 0 && this.sprite) {
       this.sprite.setVisible(false);
     }
+    
+    // Update power overlay effect
+    this.updatePowerOverlay();
   }
   
   interpolateColor(color1, color2, t) {
@@ -205,6 +217,72 @@ export default class BaseModule {
     return (r << 16) | (g << 8) | b;
   }
   
+  updatePowerOverlay() {
+    const shouldShowOverlay = this.alive && this.powered === false;
+    
+    if (shouldShowOverlay && !this.powerOverlay) {
+      // Create power overlay sprite
+      this.createPowerOverlay();
+    } else if (!shouldShowOverlay && this.powerOverlay) {
+      // Remove power overlay sprite
+      this.destroyPowerOverlay();
+    }
+  }
+  
+  createPowerOverlay() {
+    if (!this.scene || !this.localPos) return;
+    
+    const powerConfig = this.scene.visualConfig?.effects?.power_offline || {
+      sprite: '/images/effects/energy.png',
+      frameWidth: 64,
+      frameHeight: 64,
+      frames: 5,
+      frameRate: 6,
+      scale: 0.03,
+      alpha: 0.7,
+      depth: 16
+    };
+    
+    // Create power overlay sprite at module position
+    this.powerOverlay = this.scene.add.sprite(
+      this.localPos.x,
+      this.localPos.y,
+      'energy'
+    );
+    
+    this.powerOverlay.setScale(powerConfig.scale);
+    this.powerOverlay.setAlpha(powerConfig.alpha);
+    this.powerOverlay.setDepth(powerConfig.depth);
+    
+    // Create animation if not already created
+    if (!this.scene.anims.exists('power_offline_pulse')) {
+      this.scene.anims.create({
+        key: 'power_offline_pulse',
+        frames: this.scene.anims.generateFrameNumbers('energy', { 
+          start: 0, 
+          end: powerConfig.frames - 1 
+        }),
+        frameRate: powerConfig.frameRate,
+        repeat: -1 // Loop animation
+      });
+    }
+    
+    // Play animation
+    this.powerOverlay.play('power_offline_pulse');
+    
+    // Add to ship container so it moves with the ship
+    if (this.ship && this.ship.container) {
+      this.ship.container.add(this.powerOverlay);
+    }
+  }
+  
+  destroyPowerOverlay() {
+    if (this.powerOverlay) {
+      this.powerOverlay.destroy();
+      this.powerOverlay = null;
+    }
+  }
+  
   onDestroy() {
     if (this.sprite) {
       this.sprite.setAlpha(0.3);
@@ -215,6 +293,9 @@ export default class BaseModule {
     }
     console.log(`Module destroyed: ${this.name}`);
     
+    // Destroy power overlay when module is destroyed
+    this.destroyPowerOverlay();
+    
     // Create explosion and smoke effect at module position
     if (this.worldPos && this.scene.createExplosion) {
       const moduleScale = this.scene.visualConfig?.explosions?.module?.scale || 0.3;
@@ -223,6 +304,11 @@ export default class BaseModule {
     
     // Check for reactor explosion
     this.checkReactorExplosion();
+    
+    // Recalculate power systems after module destruction
+    if (this.scene.managePowerSystems && this.ship) {
+      this.scene.managePowerSystems(this.ship);
+    }
   }
   
   checkReactorExplosion() {

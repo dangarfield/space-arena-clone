@@ -80,6 +80,12 @@ export default class BattleScene extends Phaser.Scene {
       frameHeight: 32
     });
     
+    // Load power offline effect spritesheet (320x64, 5 frames of 64x64)
+    this.load.spritesheet('energy', '/images/effects/energy.png', {
+      frameWidth: 64,
+      frameHeight: 64
+    });
+    
     // Load junk spritesheet (736x182, 16 frames of 92x92 in 2 rows)
     this.load.spritesheet('junk-sheet', '/images/effects/junk-01.png', {
       frameWidth: 92,
@@ -516,6 +522,15 @@ export default class BattleScene extends Phaser.Scene {
     // Update repair bays
     this.updateRepairBays(this.playerShip, dt);
     this.updateRepairBays(this.enemyShip, dt);
+    
+    // Update power systems periodically (every 0.5 seconds)
+    if (!this.lastPowerUpdate) this.lastPowerUpdate = 0;
+    this.lastPowerUpdate += dt;
+    if (this.lastPowerUpdate >= 0.5) {
+      this.managePowerSystems(this.playerShip);
+      this.managePowerSystems(this.enemyShip);
+      this.lastPowerUpdate = 0;
+    }
     
     // Then update AI and combat (now all worldPos are current)
     if (!this.battleEnded) {
@@ -1356,9 +1371,10 @@ export default class BattleScene extends Phaser.Scene {
     if (this.battleEnded) return;
     
     const aliveWeapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
-    const aliveReactors = ship.modules.filter(m => (m.category & 128) && m.alive);
+    const aliveEngines = ship.modules.filter(m => (m.category & 64) && m.alive);
     
-    if (aliveWeapons.length === 0 || aliveReactors.length === 0) {
+    // Ship is destroyed if it has no weapons OR no engines (can't fight or move)
+    if (aliveWeapons.length === 0 || aliveEngines.length === 0) {
       ship.destroyed = true;
       this.battleEnded = true;
       
@@ -1370,6 +1386,114 @@ export default class BattleScene extends Phaser.Scene {
         this.props.onVictory(playerWon);
       }
     }
+  }
+  
+  managePowerSystems(ship) {
+    // Calculate current power generation and consumption
+    let powerGeneration = 0;
+    let powerConsumption = 0;
+    
+    ship.modules.forEach(module => {
+      if (!module.alive) return;
+      
+      const moduleData = module.data;
+      powerGeneration += moduleData.pg || 0;
+      powerConsumption += moduleData.pu || 0;
+    });
+    
+    const netPower = powerGeneration - powerConsumption;
+    console.log(`Ship power: ${powerGeneration} generation - ${powerConsumption} consumption = ${netPower} net`);
+    
+    // If power is sufficient, ensure all modules are powered
+    if (netPower >= 0) {
+      ship.modules.forEach(module => {
+        if (module.alive) {
+          module.powered = true;
+        }
+      });
+      return;
+    }
+    
+    // Power deficit - need to shut down some modules
+    const powerDeficit = Math.abs(netPower);
+    console.log(`Power deficit: ${powerDeficit} - shutting down modules`);
+    
+    // Get modules that consume power, sorted by priority (lowest priority shut down first)
+    const powerConsumers = ship.modules.filter(m => 
+      m.alive && (m.data.pu || 0) > 0
+    ).sort((a, b) => this.getModulePriority(b) - this.getModulePriority(a));
+    
+    // Shut down modules until power is balanced
+    let remainingDeficit = powerDeficit;
+    powerConsumers.forEach(module => {
+      const wasPowered = module.powered;
+      
+      if (remainingDeficit <= 0) {
+        // Sufficient power - ensure module is powered
+        module.powered = true;
+      } else {
+        const modulePower = module.data.pu || 0;
+        if (modulePower <= remainingDeficit) {
+          module.powered = false;
+          remainingDeficit -= modulePower;
+          console.log(`Shutting down ${module.name} (saves ${modulePower} power)`);
+        } else {
+          module.powered = true;
+        }
+      }
+      
+      // Update visuals if power state changed
+      if (wasPowered !== module.powered) {
+        module.updatePowerOverlay();
+        if (module.onPowerStateChanged) {
+          module.onPowerStateChanged();
+        }
+      }
+    });
+    
+    // Ensure all other modules are marked as powered
+    ship.modules.forEach(module => {
+      if (module.alive && !powerConsumers.includes(module)) {
+        const wasPowered = module.powered;
+        module.powered = true;
+        // Update visuals if power state changed
+        if (wasPowered === false) {
+          module.updatePowerOverlay();
+          if (module.onPowerStateChanged) {
+            module.onPowerStateChanged();
+          }
+        }
+      }
+    });
+    
+    // Update visuals for modules that had their power state changed
+    powerConsumers.forEach(module => {
+      const wasPowered = module.powered;
+      if (wasPowered !== module.powered) {
+        module.updateHealthCell();
+      }
+    });
+  }
+  
+  getModulePriority(module) {
+    // Priority system: higher number = higher priority (kept online longer)
+    // Engines: highest priority (need to move)
+    if (module.category & 64) return 100;
+    
+    // Weapons: high priority (need to fight)
+    if (module.category & 1 || module.category & 2 || module.category & 4) return 80;
+    
+    // Shields: medium-high priority (defense)
+    if (module.category & 16) return 60;
+    
+    // Point Defense: medium priority (defensive)
+    if (module.category & 32) return 50;
+    
+    // Support systems: lower priority
+    if (module.category & 256) return 30;
+    
+    // Everything else: lowest priority
+    return 10;
   }
 
   createExplosion(x, y, scale = 1, smokeOnly = false) {
@@ -1679,17 +1803,31 @@ export default class BattleScene extends Phaser.Scene {
       }
     });
     
+    // Track if a module was clicked to prevent cell click
+    this.moduleClickedThisFrame = false;
+    
     // Module clicks take priority
     this.input.on('gameobjectdown', (pointer, gameObject) => {
       if (gameObject.moduleData) {
+        this.moduleClickedThisFrame = true;
         this.onModuleClick?.(gameObject.moduleData);
         pointer.event.stopPropagation();
+        
+        // Reset flag after a short delay
+        this.time.delayedCall(10, () => {
+          this.moduleClickedThisFrame = false;
+        });
       }
     });
     
     // Grid cell clicks for placement
     this.input.on('pointerdown', (pointer) => {
       if (!this.playerShip) return;
+      
+      // Don't handle cell clicks if a module was just clicked
+      if (this.moduleClickedThisFrame) {
+        return;
+      }
       
       // Check if we clicked on a module sprite
       const objectsAtPointer = this.input.hitTestPointer(pointer);
@@ -1744,8 +1882,34 @@ export default class BattleScene extends Phaser.Scene {
       this.drawFittingOverlays();
     });
     
-    // Draw grid and initial overlays
+    // Draw grid FIRST (bottom layer)
     this.drawFittingGrid();
+    
+    // Set initial visibility and ensure proper depth for existing visuals (created by ShipFactory)
+    this.playerShip.modules.forEach(module => {
+      // Ensure visual helpers are properly ordered
+      if (module.rangeGraphics) {
+        module.rangeGraphics.setVisible(this.showFiringCones);
+        module.rangeGraphics.setDepth(-5);
+      }
+      if (module.shieldGraphics) {
+        module.shieldGraphics.setVisible(this.showShieldRadius);
+        module.shieldGraphics.setDepth(-5);
+      }
+      if (module.pdGraphics) {
+        module.pdGraphics.setVisible(this.showPDRadius);
+        module.pdGraphics.setDepth(-5);
+      }
+      // Ensure module sprites are on top
+      if (module.sprite) {
+        module.sprite.setDepth(5);
+      }
+      if (module.healthCell) {
+        module.healthCell.setDepth(0);
+      }
+    });
+    
+    // Draw overlays LAST (top layer)
     this.drawFittingOverlays();
   }
   
@@ -1754,8 +1918,12 @@ export default class BattleScene extends Phaser.Scene {
     const gridWidth = shipData.w;
     const gridHeight = shipData.h;
     
+    // Create grid as scene object, not container child, with absolute positioning
     this.gridGraphics = this.add.graphics();
-    this.playerShip.container.add(this.gridGraphics);
+    this.gridGraphics.setDepth(-10); // Very low depth to ensure it's behind everything
+    
+    // Position relative to ship center
+    this.gridGraphics.setPosition(this.playerShip.pos.x, this.playerShip.pos.y);
     
     // Convert g to shape (same as FittingPreviewScene)
     const shape = [];
@@ -1795,8 +1963,12 @@ export default class BattleScene extends Phaser.Scene {
       this.overlayGraphics.destroy();
     }
     
+    // Create overlays as scene object, not container child
     this.overlayGraphics = this.add.graphics();
-    this.playerShip.container.add(this.overlayGraphics);
+    this.overlayGraphics.setDepth(10); // Very high depth to ensure it's on top
+    
+    // Position relative to ship center
+    this.overlayGraphics.setPosition(this.playerShip.pos.x, this.playerShip.pos.y);
     
     // Draw hover preview
     if (this.hoverCell && this.selectedModule) {
@@ -1928,18 +2100,36 @@ export default class BattleScene extends Phaser.Scene {
     const displayName = loc[rawModule.name] || rawModule.name;
     const imageName = displayName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     
-    const moduleData = {
-      ...rawModule,
-      key: moduleId,
-      name: displayName,
-      image: `/images/modules/${imageName}.webp`
-    };
+    const category = rawModule.c || 0;
+    let type = 'utility', color = 0xffaa00;
     
-    const placement = { 
-      col, 
-      row, 
-      module: moduleData,
-      size: { w: rawModule.w, h: rawModule.h }
+    if ((category & 1) || (category & 2) || (category & 4)) {
+      type = 'weapon';
+      color = 0xff4444;
+    } else if ((category & 8) || (category & 16)) {
+      type = 'defense';
+      color = 0x4444ff;
+    }
+    
+    const placement = {
+      col,
+      row,
+      size: { w: rawModule.w, h: rawModule.h },
+      type, color,
+      module: {
+        ...rawModule, // Include all raw module data FIRST
+        key: moduleId, // Store module key for visual config lookup
+        name: displayName, // Override with localized name
+        category,
+        image: `/images/modules/${imageName}.webp`,
+        stats: {
+          Health: String(rawModule.hlt || 0),
+          Damage: String(rawModule.dmg || 0),
+          Range: String(rawModule.rng || 0),
+          Thrust_Power: String(rawModule.ep || 0),
+          Turn_Power: String(rawModule.ts || 0)
+        }
+      }
     };
     
     // Create module using existing factory
@@ -1952,9 +2142,21 @@ export default class BattleScene extends Phaser.Scene {
     
     if (module.createVisuals) {
       module.createVisuals(localPos.x, localPos.y);
-      if (module.rangeGraphics) this.playerShip.container.add(module.rangeGraphics);
-      if (module.shieldGraphics) this.playerShip.container.add(module.shieldGraphics);
-      if (module.pdGraphics) this.playerShip.container.add(module.pdGraphics);
+      if (module.rangeGraphics) {
+        this.playerShip.container.add(module.rangeGraphics);
+        module.rangeGraphics.setDepth(-5); // Visual helpers between grid and modules
+        module.rangeGraphics.setVisible(this.showFiringCones);
+      }
+      if (module.shieldGraphics) {
+        this.playerShip.container.add(module.shieldGraphics);
+        module.shieldGraphics.setDepth(-5); // Visual helpers between grid and modules
+        module.shieldGraphics.setVisible(this.showShieldRadius);
+      }
+      if (module.pdGraphics) {
+        this.playerShip.container.add(module.pdGraphics);
+        module.pdGraphics.setDepth(-5); // Visual helpers between grid and modules
+        module.pdGraphics.setVisible(this.showPDRadius);
+      }
     }
     
     if (module.healthCell) this.playerShip.container.add(module.healthCell);
@@ -1970,6 +2172,9 @@ export default class BattleScene extends Phaser.Scene {
     }
     
     this.playerShip.modules.push(module);
+    
+    // Refresh all module visuals after adding
+    this.refreshModuleVisuals();
   }
   
   removeFittingModule(col, row) {
@@ -1986,5 +2191,54 @@ export default class BattleScene extends Phaser.Scene {
     if (module.pdGraphics) module.pdGraphics.destroy();
     
     this.playerShip.modules.splice(moduleIndex, 1);
+    
+    // Refresh all module visuals after removing
+    this.refreshModuleVisuals();
+  }
+  
+  refreshModuleVisuals() {
+    if (!this.fittingMode || !this.playerShip) return;
+    
+    // Refresh visuals for all remaining modules
+    this.playerShip.modules.forEach((module, index) => {
+      
+      if (module.createVisuals) {
+        // Destroy existing visuals first
+        if (module.rangeGraphics) {
+          module.rangeGraphics.destroy();
+          module.rangeGraphics = null;
+        }
+        if (module.shieldGraphics) {
+          module.shieldGraphics.destroy();
+          module.shieldGraphics = null;
+        }
+        if (module.pdGraphics) {
+          module.pdGraphics.destroy();
+          module.pdGraphics = null;
+        }
+        
+        // Recreate visuals
+        const localPos = ShipFactory.gridToLocal(module.col, module.row, module.size, this.playerShip);
+        module.createVisuals(localPos.x, localPos.y);
+        
+        // Add to container and set visibility and depth
+        if (module.rangeGraphics) {
+          this.playerShip.container.add(module.rangeGraphics);
+          module.rangeGraphics.setDepth(-5); // Visual helpers between grid and modules
+          module.rangeGraphics.setVisible(this.showFiringCones);
+        }
+        if (module.shieldGraphics) {
+          this.playerShip.container.add(module.shieldGraphics);
+          module.shieldGraphics.setDepth(-5); // Visual helpers between grid and modules
+          module.shieldGraphics.setVisible(this.showShieldRadius);
+        }
+        if (module.pdGraphics) {
+          this.playerShip.container.add(module.pdGraphics);
+          module.pdGraphics.setDepth(-5); // Visual helpers between grid and modules
+          module.pdGraphics.setVisible(this.showPDRadius);
+        }
+      }
+    });
+    
   }
 }

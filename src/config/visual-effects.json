@@ -389,6 +389,17 @@
       "tint": "0x00ff00",
       "depth": 15,
       "duration": 500
+    },
+    "power_offline": {
+      "sprite": "/images/effects/energy.png",
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "frames": 5,
+      "frameRate": 8,
+      "scale": 0.015,
+      "alpha": 1,
+
+      "depth": 16
     }
   },
   "modules": {

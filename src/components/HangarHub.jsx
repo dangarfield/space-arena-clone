@@ -107,28 +107,61 @@ export default function HangarHub() {
     }
   };
 
-  const handleGoToBattle = () => {
+  const handleGoToBattle = async () => {
     const hangar = currentHangar();
-    if (hangar && ship()) {
+    if (!hangar || !ship()) return;
+    
+    // Validate ship configuration before battle
+    const isValid = await validateShipConfig(hangar);
+    if (isValid) {
       navigate('/battle');
     }
   };
   
-  // Check if ship is battle-ready
+  // Validate ship configuration (same logic as fitting scene)
+  const validateShipConfig = async (config) => {
+    if (!config || !config.modules || config.modules.length === 0) {
+      alert('Ship has no modules! Add some modules first.');
+      return false;
+    }
+    
+    // Load modules data
+    const modulesData = await fetch('/data/modules.json').then(r => r.json());
+    
+    // Check power balance
+    let power = 0;
+    config.modules.forEach(m => {
+      const mod = modulesData[m.moduleId];
+      if (!mod) return;
+      power += (mod.pg || 0) - (mod.pu || 0);
+    });
+    
+    if (power < 0) {
+      alert('Power deficit! Need more reactors or fewer power-consuming modules.');
+      return false;
+    }
+    
+    // Check for at least one engine
+    const hasEngine = config.modules.some(m => {
+      const mod = modulesData[m.moduleId];
+      return mod && (mod.c & 64);
+    });
+    
+    if (!hasEngine) {
+      alert('Need at least one engine!');
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Check if ship is battle-ready (for UI display)
   const isBattleReady = () => {
     const hangar = currentHangar();
     if (!hangar || !hangar.modules || hangar.modules.length === 0) return false;
     
-    const modules = hydratedModules();
-    const hasWeapon = modules.some(m => m.type === 'weapon');
-    const hasReactor = modules.some(m => m.module.name.toLowerCase().includes('reactor'));
-    const hasEngine = modules.some(m => 
-      m.module.name.toLowerCase().includes('drive') || 
-      m.module.name.toLowerCase().includes('thruster') || 
-      m.module.name.toLowerCase().includes('engine')
-    );
-    
-    return hasWeapon && hasReactor && hasEngine;
+    // Simple check for UI - detailed validation happens in handleGoToBattle
+    return hangar.modules.length > 0;
   };
   
   // Swipe navigation

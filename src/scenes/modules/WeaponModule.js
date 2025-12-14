@@ -62,8 +62,17 @@ export default class WeaponModule extends BaseModule {
   updateVisuals(x, y) {
     if (!this.rangeGraphics) return;
     
-    const config = this.visualConfig || {};
     this.rangeGraphics.clear();
+    
+    // Hide firing cone when destroyed or unpowered
+    if (!this.alive || this.powered === false) {
+      this.rangeGraphics.setVisible(false);
+      return;
+    }
+    
+    this.rangeGraphics.setVisible(true);
+    
+    const config = this.visualConfig || {};
     this.rangeGraphics.lineStyle(
       config.lineWidth || 0.1,
       parseInt(config.lineColor) || 0xff4444,
@@ -93,8 +102,15 @@ export default class WeaponModule extends BaseModule {
     }
   }
   
+  onPowerStateChanged() {
+    // Update weapon visuals when power state changes
+    if (this.localPos) {
+      this.updateVisuals(this.localPos.x, this.localPos.y);
+    }
+  }
+  
   canFire() {
-    return this.alive && this.cooldownTimer <= 0;
+    return this.alive && this.cooldownTimer <= 0 && (this.powered !== false);
   }
   
   findTargetInCone(targetShip) {

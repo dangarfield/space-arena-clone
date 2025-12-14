@@ -56,6 +56,7 @@ export default function FittingSceneCanvas() {
   const [selectedModule, setSelectedModule] = createSignal(null);
   const [menuLevel, setMenuLevel] = createSignal(0);
   const [workingConfig, setWorkingConfig] = createSignal(null); // Local working copy
+  const [showVisualHelpers, setShowVisualHelpers] = createSignal(true);
   
   let gameContainer;
   let game;
@@ -183,21 +184,72 @@ export default function FittingSceneCanvas() {
   };
   
   const handleCellClick = async (col, row) => {
-    const selected = selectedModule();
-    if (!selected) return;
+    console.log('🔥 handleCellClick called with:', col, row);
     
-    console.log('Cell clicked:', col, row, 'Module:', selected.module.name);
+    const selected = selectedModule();
+    console.log('Selected module:', selected);
+    
+    if (!selected) {
+      console.log('❌ No module selected, returning');
+      return;
+    }
+    
+    console.log('✅ Cell clicked:', col, row, 'Selected module:', selected.module.name, 'Key:', selected.module.moduleKey);
     
     // Check if there's already a module at this position
+    console.log('🔍 Searching for existing module at', col, row);
+    console.log('Current modules:', workingConfig().modules);
+    
+    // Load modules data to get dimensions
+    const modulesData = await fetch('/data/modules.json').then(r => r.json());
+    
     const existingModule = workingConfig().modules.find(m => {
-      const mw = m.w || 1;
-      const mh = m.h || 1;
-      return col >= m.col && col < m.col + mw && row >= m.row && row < m.row + mh;
+      const moduleData = modulesData[m.moduleId];
+      const mw = moduleData?.w || 1;
+      const mh = moduleData?.h || 1;
+      const isInBounds = col >= m.col && col < m.col + mw && row >= m.row && row < m.row + mh;
+      console.log(`Module ${m.moduleId} at (${m.col},${m.row}) size ${mw}x${mh}: clicked (${col},${row}) is in bounds?`, isInBounds);
+      return isInBounds;
     });
     
+    console.log('Found existing module:', existingModule);
+    
     if (existingModule) {
-      console.log('Cell occupied, not placing');
-      return; // Don't place if cell is occupied
+      console.log('Found existing module:', existingModule);
+      console.log('Selected module key:', selected.module.moduleKey);
+      console.log('Existing module ID:', existingModule.moduleId);
+      console.log('Are they equal?', existingModule.moduleId === selected.module.moduleKey);
+      console.log('Selected module object:', selected.module);
+      
+      // If clicking on the same module type that's selected, remove it
+      if (existingModule.moduleId === selected.module.moduleKey) {
+        console.log('✅ REMOVING existing module of same type:', existingModule.moduleId);
+        
+        const newModules = workingConfig().modules.filter(m => 
+          !(m.col === existingModule.col && m.row === existingModule.row)
+        );
+        
+        console.log('Old modules count:', workingConfig().modules.length);
+        console.log('New modules count:', newModules.length);
+        
+        const newConfig = {
+          ...workingConfig(),
+          modules: newModules
+        };
+        
+        setWorkingConfig(newConfig);
+        
+        // Update scene
+        if (scene && scene.updateShipConfig) {
+          await scene.updateShipConfig(newConfig);
+        }
+        
+        return;
+      } else {
+        console.log('❌ Cell occupied by DIFFERENT module, not placing');
+        console.log('Expected:', selected.module.moduleKey, 'Found:', existingModule.moduleId);
+        return; // Don't place if cell is occupied by different module
+      }
     }
     
     // Load ship data and convert to shape (same as ShipGrid)
@@ -243,20 +295,128 @@ export default function FittingSceneCanvas() {
   };
   
   const handleModuleRemove = async (moduleData) => {
-    const newModules = workingConfig().modules.filter(m => 
-      !(m.col === moduleData.col && m.row === moduleData.row)
-    );
+    console.log('🎯 Module clicked:', moduleData);
+    console.log('🔥 NEW CODE VERSION - DEBUGGING ACTIVE');
     
-    const newConfig = {
-      ...workingConfig(),
-      modules: newModules
-    };
+    const selected = selectedModule();
+    console.log('Selected module:', selected);
     
-    setWorkingConfig(newConfig);
-    
-    // Update scene (keep selected module)
-    if (scene && scene.updateShipConfig) {
-      await scene.updateShipConfig(newConfig);
+    if (selected) {
+      // Find the clicked module to get its moduleId
+      const currentConfig = workingConfig();
+      console.log('All modules in config:', currentConfig.modules);
+      console.log('Looking for module at:', moduleData.col, moduleData.row);
+      
+      let clickedModule = null;
+      for (const m of currentConfig.modules) {
+        console.log(`Checking module ${m.moduleId} at (${m.col},${m.row})`);
+        if (m.col === moduleData.col && m.row === moduleData.row) {
+          clickedModule = m;
+          console.log('✅ Found matching module!');
+          break;
+        }
+      }
+      
+      console.log('Final clicked module data:', clickedModule);
+      console.log('Selected module key:', selected.module.moduleKey);
+      console.log('Clicked module ID:', clickedModule?.moduleId);
+      
+      if (clickedModule && clickedModule.moduleId === selected.module.moduleKey) {
+        console.log('✅ REMOVING module - same type as selected');
+        
+        // Remove the module
+        const newModules = workingConfig().modules.filter(m => 
+          !(m.col === moduleData.col && m.row === moduleData.row)
+        );
+        
+        const newConfig = {
+          ...workingConfig(),
+          modules: newModules
+        };
+        
+        setWorkingConfig(newConfig);
+        
+        // Update scene
+        if (scene && scene.updateShipConfig) {
+          await scene.updateShipConfig(newConfig);
+        }
+      } else if (clickedModule) {
+        console.log('🔄 REPLACING module - different type');
+        
+        // Get the new module's dimensions
+        const newModuleW = selected.module.w || 1;
+        const newModuleH = selected.module.h || 1;
+        const placementCol = moduleData.col;
+        const placementRow = moduleData.row;
+        
+        console.log(`New module size: ${newModuleW}x${newModuleH} at (${placementCol},${placementRow})`);
+        
+        // Load modules data to get dimensions for overlap checking
+        const modulesData = await fetch('/data/modules.json').then(r => r.json());
+        
+        // Find all modules that overlap with the new module's footprint
+        const overlappingModules = workingConfig().modules.filter(m => {
+          const moduleData = modulesData[m.moduleId];
+          const mw = moduleData?.w || 1;
+          const mh = moduleData?.h || 1;
+          
+          // Check if modules overlap using rectangle intersection
+          const overlap = !(
+            placementCol >= m.col + mw ||           // new module is to the right
+            placementCol + newModuleW <= m.col ||   // new module is to the left
+            placementRow >= m.row + mh ||           // new module is below
+            placementRow + newModuleH <= m.row      // new module is above
+          );
+          
+          if (overlap) {
+            console.log(`🗑️ Removing overlapping module: ${m.moduleId} at (${m.col},${m.row}) size ${mw}x${mh}`);
+          }
+          
+          return overlap;
+        });
+        
+        // Remove all overlapping modules and add the new one
+        const newModules = workingConfig().modules.filter(m => 
+          !overlappingModules.some(overlap => overlap.col === m.col && overlap.row === m.row)
+        ).concat([{
+          moduleId: selected.module.moduleKey,
+          col: placementCol,
+          row: placementRow
+        }]);
+        
+        console.log(`Removed ${overlappingModules.length} overlapping modules`);
+        
+        const newConfig = {
+          ...workingConfig(),
+          modules: newModules
+        };
+        
+        setWorkingConfig(newConfig);
+        
+        // Update scene
+        if (scene && scene.updateShipConfig) {
+          await scene.updateShipConfig(newConfig);
+        }
+      }
+    } else {
+      console.log('✅ REMOVING module - no module selected (normal removal)');
+      
+      // Normal removal when no module selected
+      const newModules = workingConfig().modules.filter(m => 
+        !(m.col === moduleData.col && m.row === moduleData.row)
+      );
+      
+      const newConfig = {
+        ...workingConfig(),
+        modules: newModules
+      };
+      
+      setWorkingConfig(newConfig);
+      
+      // Update scene
+      if (scene && scene.updateShipConfig) {
+        await scene.updateShipConfig(newConfig);
+      }
     }
   };
   
@@ -280,16 +440,7 @@ export default function FittingSceneCanvas() {
       return false;
     }
     
-    // Check for at least one reactor
-    const hasReactor = config.modules.some(m => {
-      const mod = modulesData[m.moduleId];
-      return mod && (mod.c & 128);
-    });
-    
-    if (!hasReactor) {
-      alert('Need at least one reactor!');
-      return false;
-    }
+    // Reactor requirement removed - power balance check above is sufficient
     
     // Check for at least one engine
     const hasEngine = config.modules.some(m => {
@@ -311,6 +462,27 @@ export default function FittingSceneCanvas() {
     // Save working config to hangar
     updateHangar(hangarIndex(), workingConfig());
     navigate('/');
+  };
+  
+  const toggleVisualHelpers = () => {
+    const newState = !showVisualHelpers();
+    setShowVisualHelpers(newState);
+    
+    if (scene) {
+      // Update visibility flags in the scene
+      scene.showFiringCones = newState;
+      scene.showShieldRadius = newState;
+      scene.showPDRadius = newState;
+      
+      // Update visibility of all existing visuals
+      if (scene.playerShip && scene.playerShip.modules) {
+        scene.playerShip.modules.forEach(module => {
+          if (module.rangeGraphics) module.rangeGraphics.setVisible(newState);
+          if (module.shieldGraphics) module.shieldGraphics.setVisible(newState);
+          if (module.pdGraphics) module.pdGraphics.setVisible(newState);
+        });
+      }
+    }
   };
   
   const resetFitting = async () => {
@@ -384,6 +556,16 @@ export default function FittingSceneCanvas() {
           display: 'flex',
           gap: '0.5rem'
         }}>
+          <button onClick={toggleVisualHelpers} style={{
+            background: showVisualHelpers() ? '#003366' : '#333333', 
+            border: '2px solid', 
+            'border-color': showVisualHelpers() ? '#00aaff' : '#666666',
+            color: showVisualHelpers() ? '#00aaff' : '#999999',
+            'font-size': '14px', width: '32px', height: '32px',
+            'border-radius': '6px', cursor: 'pointer',
+            display: 'flex', 'align-items': 'center', 'justify-content': 'center',
+            transition: 'all 0.2s'
+          }}>👁</button>
           <button onClick={resetFitting} style={{
             background: '#663300', border: 'none', color: 'white',
             'font-size': '16px', width: '32px', height: '32px',

@@ -15,7 +15,7 @@ export default class MineLauncherModule extends BaseModule {
   }
   
   update(dt) {
-    if (!this.alive) return;
+    if (!this.alive || this.powered === false) return;
     
     // Check if weapons are enabled
     if (!this.scene.debugSettings?.enableWeapons) return;

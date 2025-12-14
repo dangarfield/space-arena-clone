@@ -28,8 +28,17 @@ export default class JunkLauncherModule extends BaseModule {
   updateVisuals(x, y) {
     if (!this.rangeGraphics) return;
     
-    const config = this.visualConfig || {};
     this.rangeGraphics.clear();
+    
+    // Hide firing cone when destroyed or unpowered
+    if (!this.alive || this.powered === false) {
+      this.rangeGraphics.setVisible(false);
+      return;
+    }
+    
+    this.rangeGraphics.setVisible(true);
+    
+    const config = this.visualConfig || {};
     this.rangeGraphics.lineStyle(
       config.lineWidth || 0.1,
       parseInt(config.lineColor) || 0xff4444,
@@ -54,7 +63,7 @@ export default class JunkLauncherModule extends BaseModule {
   }
   
   update(dt, enemyShip) {
-    if (!this.alive) return;
+    if (!this.alive || this.powered === false) return;
     
     // Check if weapons are enabled
     if (!this.scene.debugSettings?.enableWeapons) return;
@@ -155,6 +164,13 @@ export default class JunkLauncherModule extends BaseModule {
         this.scene.junkPieces = this.scene.junkPieces || [];
         this.scene.junkPieces.push(junk);
       });
+    }
+  }
+  
+  onPowerStateChanged() {
+    // Update junk launcher visuals when power state changes
+    if (this.localPos) {
+      this.updateVisuals(this.localPos.x, this.localPos.y);
     }
   }
 }

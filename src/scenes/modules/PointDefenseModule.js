@@ -41,7 +41,8 @@ export default class PointDefenseModule extends BaseModule {
     // Check debug setting first
     const showShields = this.scene.debugSettings?.showShields !== false;
     
-    if (!this.alive || !showShields) {
+    // Hide PD visual when destroyed, unpowered, or debug disabled
+    if (!this.alive || this.powered === false || !showShields) {
       this.pdGraphics.setVisible(false);
       return;
     }
@@ -155,7 +156,7 @@ export default class PointDefenseModule extends BaseModule {
   }
   
   canFire() {
-    return this.alive && this.cooldown <= 0;
+    return this.alive && this.powered !== false && this.cooldown <= 0;
   }
   
   tryIntercept(projectile) {
@@ -234,5 +235,12 @@ export default class PointDefenseModule extends BaseModule {
     // Add to scene's PD projectiles array
     this.scene.pdProjectiles = this.scene.pdProjectiles || [];
     this.scene.pdProjectiles.push(pdProjectile);
+  }
+  
+  onPowerStateChanged() {
+    // Update PD visuals when power state changes
+    if (this.localPos) {
+      this.updateVisuals(this.localPos.x, this.localPos.y);
+    }
   }
 }

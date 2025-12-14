@@ -42,8 +42,8 @@ export default class ShieldModule extends BaseModule {
     // Check debug setting first
     const showShields = this.scene.debugSettings?.showShields !== false;
     
-    // Hide shield visual when depleted or debug disabled
-    if (this.currentShield <= 0 || !showShields) {
+    // Hide shield visual when destroyed, unpowered, depleted, or debug disabled
+    if (!this.alive || this.powered === false || this.currentShield <= 0 || !showShields) {
       this.shieldGraphics.setVisible(false);
       return;
     }
@@ -101,8 +101,8 @@ export default class ShieldModule extends BaseModule {
     
     this.timeSinceLastHit += dt;
     
-    // Regenerate shield after delay
-    if (this.timeSinceLastHit >= this.regenDelay && this.currentShield < this.regenCapacity) {
+    // Regenerate shield after delay (only if powered)
+    if (this.powered !== false && this.timeSinceLastHit >= this.regenDelay && this.currentShield < this.regenCapacity) {
       const regenAmount = this.regenSpeed * dt;
       this.currentShield = Math.min(this.regenCapacity, this.currentShield + regenAmount);
       
@@ -113,8 +113,15 @@ export default class ShieldModule extends BaseModule {
     }
   }
   
+  onPowerStateChanged() {
+    // Update shield visuals when power state changes
+    if (this.localPos) {
+      this.updateVisuals(this.localPos.x, this.localPos.y);
+    }
+  }
+  
   isShieldUp() {
-    return this.alive && this.currentShield > 0;
+    return this.alive && this.powered !== false && this.currentShield > 0;
   }
   
   isPointInShield(x, y) {
