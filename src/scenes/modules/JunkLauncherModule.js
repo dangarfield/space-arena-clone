@@ -68,6 +68,9 @@ export default class JunkLauncherModule extends BaseModule {
     // Check if weapons are enabled
     if (!this.scene.debugSettings?.enableWeapons) return;
     
+    // Stop firing when battle ends
+    if (this.scene.battleEnded) return;
+    
     if (this.cooldown > 0) {
       this.cooldown -= dt;
     } else if (enemyShip) {

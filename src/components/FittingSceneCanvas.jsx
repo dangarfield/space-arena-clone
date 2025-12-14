@@ -57,6 +57,9 @@ export default function FittingSceneCanvas() {
   const [menuLevel, setMenuLevel] = createSignal(0);
   const [workingConfig, setWorkingConfig] = createSignal(null); // Local working copy
   const [showVisualHelpers, setShowVisualHelpers] = createSignal(true);
+  const [showModuleInfo, setShowModuleInfo] = createSignal(false);
+  const [showShipInfo, setShowShipInfo] = createSignal(false);
+  const [moduleInfoData, setModuleInfoData] = createSignal(null);
   
   let gameContainer;
   let game;
@@ -90,8 +93,8 @@ export default function FittingSceneCanvas() {
     const config = {
       type: Phaser.AUTO,
       parent: gameContainer,
-      width: window.innerWidth,
-      height: window.innerHeight - 200, // Account for header + module selector
+      width: '100%',
+      height: '100%',
       backgroundColor: '#0a0a1a',
       scene: [BattleScene]
     };
@@ -120,8 +123,9 @@ export default function FittingSceneCanvas() {
     
     // Handle resize
     const handleResize = () => {
-      if (game) {
-        game.scale.resize(window.innerWidth, window.innerHeight - 200);
+      if (game && gameContainer) {
+        const rect = gameContainer.getBoundingClientRect();
+        game.scale.resize(rect.width, rect.height);
       }
     };
     window.addEventListener('resize', handleResize);
@@ -498,6 +502,11 @@ export default function FittingSceneCanvas() {
     setSelectedModule(null);
   };
   
+  const handleModuleInfoClick = (module) => {
+    setModuleInfoData(module);
+    setShowModuleInfo(true);
+  };
+  
   // Safety check
   if (!currentHangar() || !currentHangar().shipId) {
     return (
@@ -556,6 +565,15 @@ export default function FittingSceneCanvas() {
           display: 'flex',
           gap: '0.5rem'
         }}>
+          <button onClick={() => setShowShipInfo(true)} style={{
+            background: '#003366', 
+            border: '2px solid #00aaff',
+            color: '#00aaff',
+            'font-size': '14px', width: '32px', height: '32px',
+            'border-radius': '6px', cursor: 'pointer',
+            display: 'flex', 'align-items': 'center', 'justify-content': 'center',
+            transition: 'all 0.2s'
+          }}>ℹ</button>
           <button onClick={toggleVisualHelpers} style={{
             background: showVisualHelpers() ? '#003366' : '#333333', 
             border: '2px solid', 
@@ -582,7 +600,11 @@ export default function FittingSceneCanvas() {
       </div>
       
       {/* Phaser Game Container */}
-      <div ref={gameContainer} style={{ flex: 1, position: 'relative' }}>
+      <div ref={gameContainer} style={{ 
+        flex: 1, 
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
         {/* Resource Display */}
         <div style={{
           position: 'absolute',
@@ -598,7 +620,25 @@ export default function FittingSceneCanvas() {
         }}>
           <ResourceDisplay hangar={workingConfig()} />
         </div>
+        
+        {/* Selected Module Display */}
+        <div style={{
+          position: 'absolute',
+          bottom: '1rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          color: '#00aaff',
+          'font-size': '16px',
+          'font-weight': '600',
+          'text-align': 'center',
+          'pointer-events': 'none',
+          'text-shadow': '2px 2px 4px rgba(0, 0, 0, 0.8)'
+        }}>
+          {selectedModule() ? `Selected: ${selectedModule().module.name}` : ''}
+        </div>
       </div>
+      
+
       
       {/* Module Selector */}
       <div style={{
@@ -658,6 +698,7 @@ export default function FittingSceneCanvas() {
                     module={module}
                     selected={selectedModule()?.module === module}
                     onClick={() => handleModuleSelect(module, 'weapon', 0xff4444)}
+                    onInfoClick={handleModuleInfoClick}
                   />
                 )}
               </For>
@@ -673,6 +714,7 @@ export default function FittingSceneCanvas() {
                     module={module}
                     selected={selectedModule()?.module === module}
                     onClick={() => handleModuleSelect(module, 'defense', 0x4444ff)}
+                    onInfoClick={handleModuleInfoClick}
                   />
                 )}
               </For>
@@ -689,6 +731,7 @@ export default function FittingSceneCanvas() {
                     module={module}
                     selected={selectedModule()?.module === module}
                     onClick={() => handleModuleSelect(module, 'utility', 0xffaa00)}
+                    onInfoClick={handleModuleInfoClick}
                   />
                 )}
               </For>
@@ -709,7 +752,32 @@ export default function FittingSceneCanvas() {
       <style>{`
         .module-scroll::-webkit-scrollbar { display: none; }
         .module-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Force Phaser canvas to fill container exactly */
+        canvas {
+          display: block !important;
+          width: 100% !important;
+          height: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
       `}</style>
+      
+      {/* Module Information Dialog */}
+      <Show when={showModuleInfo() && moduleInfoData()}>
+        <ModuleInfoDialog 
+          module={moduleInfoData()} 
+          onClose={() => setShowModuleInfo(false)} 
+        />
+      </Show>
+      
+      {/* Ship Information Dialog */}
+      <Show when={showShipInfo()}>
+        <ShipInfoDialog 
+          hangar={workingConfig()}
+          onClose={() => setShowShipInfo(false)} 
+        />
+      </Show>
     </div>
   );
 }
@@ -777,36 +845,447 @@ function ModuleCard(props) {
     );
   }
   
-  const powerValue = () => {
-    const net = (props.module.pg || 0) - (props.module.pu || 0);
-    if (net > 0) return `+${net}`;
-    if (net < 0) return `${net}`;
+  // Safety check for module data
+  if (!props.module) {
     return null;
+  }
+  
+  const handleInfoClick = (e) => {
+    e.stopPropagation();
+    if (props.module) {
+      props.onInfoClick?.(props.module);
+    }
   };
+  
+  // Calculate power value once (with safety check)
+  const module = props.module;
+  const net = (module?.pg || 0) - (module?.pu || 0);
+  const powerDisplay = net > 0 ? `+${net}` : net < 0 ? `${net}` : null;
   
   return (
     <button onClick={props.onClick} style={{
       'flex-shrink': 0, width: '60px', height: '60px',
-      background: props.module.image ? `url(${props.module.image}) center/contain no-repeat, #003366` : '#003366',
+      background: module?.image ? `url(${module.image}) center/contain no-repeat, #003366` : '#003366',
       'background-size': 'contain',
       border: props.selected ? '3px solid #00aaff' : '2px solid #0055aa',
       'border-radius': '8px', cursor: 'pointer', position: 'relative', padding: 0
     }}>
+      {/* Info button */}
+      <div onClick={handleInfoClick} style={{
+        position: 'absolute', top: '2px', right: '2px',
+        width: '16px', height: '16px',
+        background: 'rgba(0, 0, 0, 0.8)', border: '1px solid #00aaff',
+        'border-radius': '50%', color: '#00aaff',
+        'font-size': '10px', 'font-weight': 'bold',
+        display: 'flex', 'align-items': 'center', 'justify-content': 'center',
+        cursor: 'pointer', padding: 0
+      }}>ℹ</div>
+      
       <div style={{
         position: 'absolute', bottom: '4px', left: '4px',
         background: 'rgba(0, 0, 0, 0.8)', color: 'white',
         'font-size': '10px', 'font-weight': '600',
         padding: '2px 6px', 'border-radius': '4px'
-      }}>{props.module.w}x{props.module.h}</div>
-      <Show when={powerValue()}>
+      }}>{module?.w || 1}x{module?.h || 1}</div>
+      <Show when={powerDisplay}>
         <div style={{
           position: 'absolute', bottom: '4px', right: '4px',
           background: 'rgba(0, 0, 0, 0.8)',
-          color: powerValue().startsWith('+') ? '#00ff00' : '#ff0000',
+          color: powerDisplay.startsWith('+') ? '#00ff00' : '#ff0000',
           'font-size': '10px', 'font-weight': '600',
           padding: '2px 6px', 'border-radius': '4px'
-        }}>{powerValue()}</div>
+        }}>{powerDisplay}</div>
       </Show>
     </button>
+  );
+}
+
+function ModuleInfoDialog(props) {
+  const [moduleData, setModuleData] = createSignal(null);
+  
+  // Load full module data when dialog opens
+  createEffect(async () => {
+    if (props.module) {
+      const modulesData = await fetch('/data/modules.json').then(r => r.json());
+      const fullData = modulesData[props.module.moduleKey];
+      setModuleData(fullData);
+    }
+  });
+  
+  const getModuleType = () => {
+    const module = moduleData();
+    if (!module) return 'Unknown';
+    
+    const category = module.c || 0;
+    if (category & 1) return 'Ballistic Weapon';
+    if (category & 2) return 'Missile Weapon';
+    if (category & 4) return 'Laser Weapon';
+    if (category & 8) return 'Armor';
+    if (category & 16) return 'Shield';
+    if (category & 32) return 'Point Defense';
+    if (category & 64) return 'Engine';
+    if (category & 128) return 'Reactor';
+    if (category & 256) return 'Support';
+    return 'Utility';
+  };
+  
+  const getStatDisplay = (key, value) => {
+    if (value === undefined || value === null || value === 0) return null;
+    
+    const statNames = {
+      hlt: 'Health',
+      dmg: 'Damage',
+      rng: 'Range',
+      ats: 'Fire Rate',
+      fc: 'Fire Cone',
+      ss: 'Shot Spread',
+      ip: 'Impact Power',
+      imf: 'Impact Force Multiplier',
+      rp: 'Ricochet Power',
+      rf: 'Ricochet Factor',
+      ddo: 'Damage Dropoff',
+      msd: 'Laser Duration',
+      mc: 'Missile Count',
+      mspd: 'Missile Speed',
+      macc: 'Missile Accuracy',
+      mfj: 'Missile Fuel',
+      mlf: 'Missile Lifetime',
+      mer: 'Explosion Radius',
+      mef: 'Explosion Force',
+      sr: 'Shield Radius',
+      sa: 'Shield Strength',
+      smr: 'Max Regeneration',
+      srs: 'Regen Speed',
+      ep: 'Thrust Power',
+      ts: 'Turn Power',
+      er: 'Explosion Radius',
+      ed: 'Explosion Damage',
+      dur: 'Duration',
+      cd: 'Cooldown',
+      mvmb: 'Movement Boost',
+      tb: 'Thrust Boost',
+      dc: 'Duration Charge',
+      pdr: 'PD Range',
+      pdmsc: 'Missile Intercept Chance',
+      pdmnc: 'Mine Intercept Chance',
+      pdtc: 'Torpedo Intercept Chance',
+      pdd: 'PD Damage',
+      m: 'Mass',
+      a: 'Armor',
+      r: 'Reflect',
+      pu: 'Power Use',
+      pg: 'Power Generation',
+      cst: 'Cost',
+      hcst: 'Celestium Cost'
+    };
+    
+    return {
+      name: statNames[key] || key,
+      value: typeof value === 'number' ? value.toString() : value
+    };
+  };
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.8)',
+      display: 'flex',
+      'align-items': 'center',
+      'justify-content': 'center',
+      'z-index': 1000
+    }} onClick={props.onClose}>
+      <div style={{
+        background: '#0a0a1a',
+        border: '2px solid #00aaff',
+        'border-radius': '12px',
+        padding: '1.5rem',
+        'max-width': '500px',
+        'max-height': '80vh',
+        'overflow-y': 'auto',
+        color: 'white'
+      }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'space-between',
+          'margin-bottom': '1rem'
+        }}>
+          <div style={{ display: 'flex', 'align-items': 'center', gap: '1rem' }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              background: props.module.image ? `url(${props.module.image}) center/contain no-repeat, #003366` : '#003366',
+              'background-size': 'contain',
+              border: '2px solid #00aaff',
+              'border-radius': '8px'
+            }}></div>
+            <div>
+              <h3 style={{ margin: 0, color: '#00aaff', 'font-size': '18px' }}>
+                {props.module.name}
+              </h3>
+              <p style={{ margin: '0.25rem 0 0 0', color: '#aaa', 'font-size': '14px' }}>
+                {getModuleType()}
+              </p>
+            </div>
+          </div>
+          <button onClick={props.onClose} style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#00aaff',
+            'font-size': '24px',
+            cursor: 'pointer',
+            padding: '0.25rem'
+          }}>×</button>
+        </div>
+        
+        {/* Basic Info */}
+        <div style={{
+          display: 'grid',
+          'grid-template-columns': '1fr 1fr',
+          gap: '0.5rem',
+          'margin-bottom': '1rem',
+          padding: '1rem',
+          background: '#001122',
+          'border-radius': '8px'
+        }}>
+          <div>
+            <span style={{ color: '#aaa' }}>Size:</span>
+            <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+              {props.module.w}×{props.module.h}
+            </span>
+          </div>
+          <div>
+            <span style={{ color: '#aaa' }}>Required Level:</span>
+            <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+              {props.module.requiredLevel}
+            </span>
+          </div>
+          <Show when={props.module.pg || props.module.pu}>
+            <div>
+              <span style={{ color: '#aaa' }}>Power:</span>
+              <span style={{ 
+                'margin-left': '0.5rem', 
+                'font-weight': '600',
+                color: ((props.module.pg || 0) - (props.module.pu || 0)) >= 0 ? '#00ff00' : '#ff0000'
+              }}>
+                {((props.module.pg || 0) - (props.module.pu || 0)) >= 0 ? '+' : ''}
+                {(props.module.pg || 0) - (props.module.pu || 0)}
+              </span>
+            </div>
+          </Show>
+        </div>
+        
+        {/* Detailed Stats */}
+        <Show when={moduleData()}>
+          <div style={{
+            display: 'grid',
+            'grid-template-columns': '1fr 1fr',
+            gap: '0.5rem',
+            'font-size': '14px'
+          }}>
+            <For each={Object.entries(moduleData()).map(([key, value]) => getStatDisplay(key, value)).filter(Boolean)}>
+              {(stat) => (
+                <div style={{
+                  display: 'flex',
+                  'justify-content': 'space-between',
+                  padding: '0.5rem',
+                  background: '#001122',
+                  'border-radius': '4px'
+                }}>
+                  <span style={{ color: '#aaa' }}>{stat.name}:</span>
+                  <span style={{ 'font-weight': '600' }}>{stat.value}</span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+function ShipInfoDialog(props) {
+  const [shipData, setShipData] = createSignal(null);
+  const [resources, setResources] = createSignal({ power: 0, mass: 0, armor: 0, cells: 0 });
+  
+  // Load ship data and calculate resources
+  createEffect(async () => {
+    if (!props.hangar?.shipId) return;
+    
+    const [ship, modulesData] = await Promise.all([
+      fetch(`/data/ships/${props.hangar.shipId}.json`).then(r => r.json()),
+      fetch('/data/modules.json').then(r => r.json())
+    ]);
+    
+    setShipData(ship);
+    
+    // Calculate resources
+    let power = 0, mass = 0, armor = 0, cells = 0;
+    
+    (props.hangar.modules || []).forEach(m => {
+      const mod = modulesData[m.moduleId];
+      if (!mod) return;
+      
+      power += (mod.pg || 0) - (mod.pu || 0);
+      mass += mod.m || 0;
+      armor += mod.a || 0;
+      cells += (mod.w || 1) * (mod.h || 1);
+    });
+    
+    setResources({ power, mass, armor, cells });
+  });
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.8)',
+      display: 'flex',
+      'align-items': 'center',
+      'justify-content': 'center',
+      'z-index': 1000
+    }} onClick={props.onClose}>
+      <div style={{
+        background: '#0a0a1a',
+        border: '2px solid #00aaff',
+        'border-radius': '12px',
+        padding: '1.5rem',
+        'max-width': '500px',
+        'max-height': '80vh',
+        'overflow-y': 'auto',
+        color: 'white'
+      }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'space-between',
+          'margin-bottom': '1rem'
+        }}>
+          <h3 style={{ margin: 0, color: '#00aaff', 'font-size': '18px' }}>
+            Ship Information
+          </h3>
+          <button onClick={props.onClose} style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#00aaff',
+            'font-size': '24px',
+            cursor: 'pointer',
+            padding: '0.25rem'
+          }}>×</button>
+        </div>
+        
+        <Show when={shipData()}>
+          {/* Ship Stats */}
+          <div style={{
+            'margin-bottom': '1rem',
+            padding: '1rem',
+            background: '#001122',
+            'border-radius': '8px'
+          }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', color: '#00aaff' }}>
+              {props.hangar?.shipId?.replace(/_/g, ' ')}
+            </h4>
+            <div style={{
+              display: 'grid',
+              'grid-template-columns': '1fr 1fr',
+              gap: '0.5rem',
+              'font-size': '14px'
+            }}>
+              <div>
+                <span style={{ color: '#aaa' }}>Size:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {shipData().w}×{shipData().h}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Required Level:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {shipData().lr || 0}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Speed:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {shipData().ms || 0}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Turn Power:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {shipData().ts || 0}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Shield Strength:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {shipData().sa || 0}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Module Count:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {props.hangar?.modules?.length || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Current Fitting Resources */}
+          <div style={{
+            padding: '1rem',
+            background: '#001122',
+            'border-radius': '8px'
+          }}>
+            <h4 style={{ margin: '0 0 0.75rem 0', color: '#00aaff' }}>
+              Current Fitting
+            </h4>
+            <div style={{
+              display: 'grid',
+              'grid-template-columns': '1fr 1fr',
+              gap: '0.5rem',
+              'font-size': '14px'
+            }}>
+              <div>
+                <span style={{ color: '#aaa' }}>Power:</span>
+                <span style={{ 
+                  'margin-left': '0.5rem', 
+                  'font-weight': '600',
+                  color: resources().power >= 0 ? '#00ff00' : '#ff0000'
+                }}>
+                  {resources().power >= 0 ? '+' : ''}{resources().power}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Mass:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {resources().mass}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Armor:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {resources().armor}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: '#aaa' }}>Cells Used:</span>
+                <span style={{ 'margin-left': '0.5rem', 'font-weight': '600' }}>
+                  {resources().cells}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Show>
+      </div>
+    </div>
   );
 }

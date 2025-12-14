@@ -134,6 +134,9 @@ export default class BattleScene extends Phaser.Scene {
     // Setup GUI (battle mode only)
     if (!this.fittingMode) {
       this.setupGUI();
+      
+      // Apply initial debug settings to module visuals
+      this.updateModuleVisuals();
     }
   }
   
@@ -225,6 +228,21 @@ export default class BattleScene extends Phaser.Scene {
     this.enemyShip.container.add(this.enemyDirection);
   }
   
+  updateModuleVisuals() {
+    // Update firing cone visibility for both ships
+    if (this.playerShip) {
+      this.playerShip.modules.forEach(m => {
+        if (m.rangeGraphics) m.rangeGraphics.setVisible(this.debugSettings.showFiringCones);
+      });
+    }
+    
+    if (this.enemyShip) {
+      this.enemyShip.modules.forEach(m => {
+        if (m.rangeGraphics) m.rangeGraphics.setVisible(this.debugSettings.showFiringCones);
+      });
+    }
+  }
+  
   createStarfield() {
     // Get starfield config
     const config = this.visualConfig?.starfield || {
@@ -312,7 +330,7 @@ export default class BattleScene extends Phaser.Scene {
       showPlayerModules: true,
       showEnemyModules: true,
       showStarfield: true,
-      showFiringCones: true,
+      showFiringCones: false,
       showDirectionLines: false,
       showShields: true,
       showDebugPanel: false,
@@ -477,25 +495,26 @@ export default class BattleScene extends Phaser.Scene {
       return;
     }
     
-    if (this.playerShip.destroyed || this.enemyShip.destroyed) {
-      return;
-    }
+    // Don't return early when ships are destroyed - let projectiles continue
     
-    // Track battle time
-    if (!this.battleTime) this.battleTime = 0;
-    this.battleTime += dt;
-    
-    // Calculate damage multiplier (starts at 30s, increases 2% per second)
-    this.damageMultiplier = 1.0;
-    if (this.battleTime > 30) {
-      const secondsAfter30 = this.battleTime - 30;
-      this.damageMultiplier = 1.0 + (secondsAfter30 * 0.02);
-    }
-    
-    // Update GUI stats
-    if (this.battleStats) {
-      this.battleStats.battleTime = Math.floor(this.battleTime);
-      this.battleStats.damageMultiplier = parseFloat(this.damageMultiplier.toFixed(2));
+    // Only track battle time and damage multiplier if battle is still active
+    if (!this.playerShip.destroyed && !this.enemyShip.destroyed) {
+      // Track battle time
+      if (!this.battleTime) this.battleTime = 0;
+      this.battleTime += dt;
+      
+      // Calculate damage multiplier (starts at 30s, increases 2% per second)
+      this.damageMultiplier = 1.0;
+      if (this.battleTime > 30) {
+        const secondsAfter30 = this.battleTime - 30;
+        this.damageMultiplier = 1.0 + (secondsAfter30 * 0.02);
+      }
+      
+      // Update GUI stats
+      if (this.battleStats) {
+        this.battleStats.battleTime = Math.floor(this.battleTime);
+        this.battleStats.damageMultiplier = parseFloat(this.damageMultiplier.toFixed(2));
+      }
     }
     
     this.frameCount++;
@@ -504,9 +523,19 @@ export default class BattleScene extends Phaser.Scene {
     this.updateShipPosition(this.playerShip, dt);
     this.updateShipPosition(this.enemyShip, dt);
     
-    // Apply friction when battle ends
+    // Apply gradual wind-down when battle ends
     if (this.battleEnded) {
-      const friction = 0.95;
+      this.battleEndTime += dt;
+      
+      // Gradually increase friction over 2 seconds
+      const windDownDuration = 2.0; // 2 seconds to fully stop
+      const windDownProgress = Math.min(this.battleEndTime / windDownDuration, 1.0);
+      
+      // Start with light friction, increase to heavy friction (much more gradual)
+      const baseFriction = 0.9998;  // Very light initial friction
+      const maxFriction = 0.9985;   // Still light final friction
+      const friction = baseFriction - (windDownProgress * (baseFriction - maxFriction));
+      
       this.playerShip.velocity.x *= friction;
       this.playerShip.velocity.y *= friction;
       this.playerShip.angularVelocity *= friction;
@@ -532,10 +561,18 @@ export default class BattleScene extends Phaser.Scene {
       this.lastPowerUpdate = 0;
     }
     
-    // Then update AI and combat (now all worldPos are current)
+    // Update AI and combat with gradual wind-down
     if (!this.battleEnded) {
+      // Normal battle AI
       this.updateShipAI(this.playerShip, this.enemyShip, dt);
       this.updateShipAI(this.enemyShip, this.playerShip, dt);
+    } else {
+      // Battle ended - gradual wind-down for victor ship
+      const victorShip = this.playerShip.destroyed ? this.enemyShip : this.playerShip;
+      const defeatedShip = this.playerShip.destroyed ? this.playerShip : this.enemyShip;
+      
+      // Only update victor with reduced activity
+      this.updateShipAIWindDown(victorShip, defeatedShip, dt);
     }
     
     // Update projectiles
@@ -586,6 +623,140 @@ export default class BattleScene extends Phaser.Scene {
     
     // AI and combat
     this.updateAI(ship, enemyShip, dt);
+  }
+  
+  updateShipAIWindDown(victorShip, defeatedShip, dt) {
+    // Calculate wind-down progress (0 = just ended, 1 = fully wound down)
+    const windDownDuration = 2.0;
+    const windDownProgress = Math.min(this.battleEndTime / windDownDuration, 1.0);
+    
+    // No weapon firing during wind-down (weapons stop instantly)
+    // Only apply movement AI with reduced thrust/turning
+    this.updateMovementAI(victorShip, defeatedShip, dt, windDownProgress);
+  }
+  
+  updateMovementAI(ship, enemyShip, dt, windDownProgress = 0) {
+    const engines = ship.modules.filter(m => m instanceof EngineModule && m.alive);
+    
+    if (engines.length > 0) {
+      // Calculate angle to enemy
+      const angleToEnemy = Phaser.Math.Angle.Between(
+        ship.pos.x, ship.pos.y,
+        enemyShip.pos.x, enemyShip.pos.y
+      );
+      
+      // Sum engine contributions
+      const totalThrust = engines.reduce((sum, e) => sum + e.getThrustContribution(), 0);
+      const totalTurn = engines.reduce((sum, e) => sum + e.getTurnContribution(), 0);
+      
+      // Calculate total ship mass from all modules
+      const totalMass = ship.modules.reduce((sum, m) => sum + (parseFloat(m.data.m) || 0), 0);
+      const effectiveMass = Math.max(totalMass, 1); // Prevent division by zero
+      
+      // Engines with wind-down reduction
+      if (this.debugSettings.enableEngines) {
+        // Calculate distance to enemy
+        const distance = Phaser.Math.Distance.Between(
+          ship.pos.x, ship.pos.y,
+          enemyShip.pos.x, enemyShip.pos.y
+        );
+        
+        // Gradually reduce thrust and turning during wind-down (much more gradual)
+        const thrustReduction = 1.0 - (windDownProgress * 0.008); // Reduce to 99.2% over wind-down period
+        const turnReduction = 1.0 - (windDownProgress * 0.009); // Reduce to 99.1% over wind-down period
+        
+        // Rotate towards enemy (factor in mass for rotational inertia) - reduced during wind-down
+        const shipTurnPower = ship.config.ship.ts || 1;
+        if (totalTurn > 0) {
+          const angleDiff = Phaser.Math.Angle.Wrap(angleToEnemy - ship.rotation);
+          const turnAcceleration = (totalTurn * shipTurnPower) / effectiveMass;
+          const turnAmount = angleDiff * turnAcceleration * this.debugSettings.turnMultiplier * turnReduction * dt;
+          ship.rotation += turnAmount;
+        }
+        
+        // During wind-down, gradually stop aggressive maneuvering
+        if (windDownProgress < 0.5) {
+          // Desired engagement distance (average weapon range)
+          const weapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
+          const avgRange = weapons.length > 0 
+            ? weapons.reduce((sum, w) => sum + w.range, 0) / weapons.length 
+            : 50;
+          const engagementRangeFactor = this.debugSettings?.engagementRangeFactor || 0.7;
+          
+          // Vary engagement distance over time for more natural movement
+          if (!ship.engagementVariation) {
+            ship.engagementVariation = Math.random() * 0.3 - 0.15; // -0.15 to +0.15
+            ship.engagementTimer = 0;
+          }
+          ship.engagementTimer += dt;
+          
+          if (ship.engagementTimer > 3) { // Change preferred distance every 3 seconds
+            ship.engagementVariation = Math.random() * 0.3 - 0.15;
+            ship.engagementTimer = 0;
+          }
+          
+          const variedRangeFactor = engagementRangeFactor + ship.engagementVariation;
+          const engagementDistance = avgRange * variedRangeFactor;
+          
+          const angleDiff = Math.abs(Phaser.Math.Angle.Wrap(angleToEnemy - ship.rotation));
+          
+          // Determine thrust direction based on distance - reduced during wind-down
+          let thrustDirection = 0; // 0 = none, 1 = forward, -1 = reverse
+          
+          if (distance > engagementDistance * 1.2 && angleDiff < Math.PI / 4) {
+            thrustDirection = 1; // Too far - thrust forward
+          } else if (distance < engagementDistance * 0.8) {
+            thrustDirection = -1; // Too close - reverse thrust
+          }
+          
+          if (thrustDirection !== 0 && totalThrust > 0) {
+            // Apply thrust (forward or reverse) - acceleration = thrust / mass - reduced during wind-down
+            const acceleration = totalThrust / effectiveMass;
+            const thrustAngle = thrustDirection > 0 ? ship.rotation : ship.rotation + Math.PI;
+            const thrustStrength = 0.7 * thrustReduction; // Moderate thrust strength, reduced during wind-down
+            const shipThrustMult = ship.thrustMultiplier || 1;
+            ship.velocity.x += Math.cos(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+            ship.velocity.y += Math.sin(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+          }
+          
+          // Lateral strafing movement - reduced during wind-down
+          if (!ship.strafeTimer) ship.strafeTimer = 0;
+          ship.strafeTimer += dt;
+          
+          if (ship.strafeTimer > 2) { // Change strafe direction every 2 seconds
+            ship.strafeDirection = (Math.random() - 0.5) * 2; // -1 to 1
+            ship.strafeTimer = 0;
+          }
+          
+          if (ship.strafeDirection && totalThrust > 0) {
+            // Apply lateral thrust perpendicular to facing direction - reduced during wind-down
+            const acceleration = totalThrust / effectiveMass;
+            const perpAngle = ship.rotation + Math.PI / 2;
+            const strafeStrength = 0.3 * thrustReduction; // Keep original strafe strength, reduced during wind-down
+            const shipThrustMult = ship.thrustMultiplier || 1;
+            ship.velocity.x += Math.cos(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+            ship.velocity.y += Math.sin(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
+          }
+        }
+        
+        // Apply velocity damping (friction/drag)
+        const dampingFactor = this.debugSettings?.velocityDamping || 0.98;
+        ship.velocity.x *= dampingFactor;
+        ship.velocity.y *= dampingFactor;
+        
+        // Cap velocity to ship's max speed
+        const maxSpeed = ship.config.ship.ms || 10;
+        const currentSpeed = Math.sqrt(ship.velocity.x ** 2 + ship.velocity.y ** 2);
+        if (currentSpeed > maxSpeed) {
+          ship.velocity.x = (ship.velocity.x / currentSpeed) * maxSpeed;
+          ship.velocity.y = (ship.velocity.y / currentSpeed) * maxSpeed;
+        }
+        
+        // Apply velocity
+        ship.pos.x += ship.velocity.x;
+        ship.pos.y += ship.velocity.y;
+      }
+    }
   }
 
   updateAfterburners(ship, dt) {
@@ -715,7 +886,7 @@ export default class BattleScene extends Phaser.Scene {
     console.log(`Ship warped from (${ship.pos.x.toFixed(1)}, ${ship.pos.y.toFixed(1)}) to (${newX.toFixed(1)}, ${newY.toFixed(1)})`);
   }
 
-  updateAI(ship, enemyShip, dt) {
+  updateAI(ship, enemyShip, dt, windDownProgress = 0) {
     // Weapons
     if (this.debugSettings.enableWeapons) {
       const weapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
@@ -797,121 +968,7 @@ export default class BattleScene extends Phaser.Scene {
     }
     
     // Movement AI
-    const engines = ship.modules.filter(m => m instanceof EngineModule && m.alive);
-    
-    if (engines.length > 0) {
-      // Calculate angle to enemy
-      const angleToEnemy = Phaser.Math.Angle.Between(
-        ship.pos.x, ship.pos.y,
-        enemyShip.pos.x, enemyShip.pos.y
-      );
-      
-      // Sum engine contributions
-      const totalThrust = engines.reduce((sum, e) => sum + e.getThrustContribution(), 0);
-      const totalTurn = engines.reduce((sum, e) => sum + e.getTurnContribution(), 0);
-      
-      // Calculate total ship mass from all modules
-      const totalMass = ship.modules.reduce((sum, m) => sum + (parseFloat(m.data.m) || 0), 0);
-      const effectiveMass = Math.max(totalMass, 1); // Prevent division by zero
-      
-      // Engines
-      if (this.debugSettings.enableEngines) {
-        // Calculate distance to enemy
-        const distance = Phaser.Math.Distance.Between(
-          ship.pos.x, ship.pos.y,
-          enemyShip.pos.x, enemyShip.pos.y
-        );
-        
-        // Rotate towards enemy (factor in mass for rotational inertia)
-        const shipTurnPower = ship.config.ship.ts || 1;
-        if (totalTurn > 0) {
-          const angleDiff = Phaser.Math.Angle.Wrap(angleToEnemy - ship.rotation);
-          const turnAcceleration = (totalTurn * shipTurnPower) / effectiveMass;
-          const turnAmount = angleDiff * turnAcceleration * this.debugSettings.turnMultiplier * dt;
-          ship.rotation += turnAmount;
-        }
-        
-        // Desired engagement distance (average weapon range)
-        const weapons = ship.modules.filter(m => m instanceof WeaponModule && m.alive);
-        const avgRange = weapons.length > 0 
-          ? weapons.reduce((sum, w) => sum + w.range, 0) / weapons.length 
-          : 50;
-        const engagementRangeFactor = this.debugSettings?.engagementRangeFactor || 0.7;
-        
-        // Vary engagement distance over time for more natural movement
-        if (!ship.engagementVariation) {
-          ship.engagementVariation = Math.random() * 0.3 - 0.15; // -0.15 to +0.15
-          ship.engagementTimer = 0;
-        }
-        ship.engagementTimer += dt;
-        
-        if (ship.engagementTimer > 3) { // Change preferred distance every 3 seconds
-          ship.engagementVariation = Math.random() * 0.3 - 0.15;
-          ship.engagementTimer = 0;
-        }
-        
-        const variedRangeFactor = engagementRangeFactor + ship.engagementVariation;
-        const engagementDistance = avgRange * variedRangeFactor;
-        
-        const angleDiff = Math.abs(Phaser.Math.Angle.Wrap(angleToEnemy - ship.rotation));
-        
-        // Determine thrust direction based on distance
-        let thrustDirection = 0; // 0 = none, 1 = forward, -1 = reverse
-        
-        if (distance > engagementDistance * 1.2 && angleDiff < Math.PI / 4) {
-          thrustDirection = 1; // Too far - thrust forward
-        } else if (distance < engagementDistance * 0.8) {
-          thrustDirection = -1; // Too close - reverse thrust
-        }
-        // Moderate deadzone (0.8 to 1.2) for balanced movement
-        
-        if (thrustDirection !== 0 && totalThrust > 0) {
-          // Apply thrust (forward or reverse) - acceleration = thrust / mass
-          const acceleration = totalThrust / effectiveMass;
-          const thrustAngle = thrustDirection > 0 ? ship.rotation : ship.rotation + Math.PI;
-          const thrustStrength = 0.7; // Moderate thrust strength
-          const shipThrustMult = ship.thrustMultiplier || 1;
-          ship.velocity.x += Math.cos(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
-          ship.velocity.y += Math.sin(thrustAngle) * acceleration * thrustStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
-        }
-        
-        // Lateral strafing movement
-        if (!ship.strafeTimer) ship.strafeTimer = 0;
-        ship.strafeTimer += dt;
-        
-        if (ship.strafeTimer > 2) { // Change strafe direction every 2 seconds
-          ship.strafeDirection = (Math.random() - 0.5) * 2; // -1 to 1
-          ship.strafeTimer = 0;
-        }
-        
-        if (ship.strafeDirection && totalThrust > 0) {
-          // Apply lateral thrust perpendicular to facing direction
-          const acceleration = totalThrust / effectiveMass;
-          const perpAngle = ship.rotation + Math.PI / 2;
-          const strafeStrength = 0.3; // Keep original strafe strength
-          const shipThrustMult = ship.thrustMultiplier || 1;
-          ship.velocity.x += Math.cos(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
-          ship.velocity.y += Math.sin(perpAngle) * ship.strafeDirection * acceleration * strafeStrength * this.debugSettings.thrustMultiplier * shipThrustMult * dt;
-        }
-        
-        // Apply velocity damping (friction/drag)
-        const dampingFactor = this.debugSettings?.velocityDamping || 0.98;
-        ship.velocity.x *= dampingFactor;
-        ship.velocity.y *= dampingFactor;
-        
-        // Cap velocity to ship's max speed
-        const maxSpeed = ship.config.ship.ms || 10;
-        const currentSpeed = Math.sqrt(ship.velocity.x ** 2 + ship.velocity.y ** 2);
-        if (currentSpeed > maxSpeed) {
-          ship.velocity.x = (ship.velocity.x / currentSpeed) * maxSpeed;
-          ship.velocity.y = (ship.velocity.y / currentSpeed) * maxSpeed;
-        }
-        
-        // Apply velocity
-        ship.pos.x += ship.velocity.x;
-        ship.pos.y += ship.velocity.y;
-      }
-    }
+    this.updateMovementAI(ship, enemyShip, dt, windDownProgress);
   }
 
 
@@ -1377,11 +1434,12 @@ export default class BattleScene extends Phaser.Scene {
     if (aliveWeapons.length === 0 || aliveEngines.length === 0) {
       ship.destroyed = true;
       this.battleEnded = true;
+      this.battleEndTime = 0; // Track time since battle ended
       
       const isPlayer = ship === this.playerShip;
       const playerWon = !isPlayer;
       
-      // Call victory callback
+      // Call victory callback immediately to test if delay is causing pause
       if (this.props.onVictory) {
         this.props.onVictory(playerWon);
       }
